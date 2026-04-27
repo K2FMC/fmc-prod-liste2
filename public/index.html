@@ -261,7 +261,7 @@ function processOrders(orderEdges) {
     const s = surplus.find(s =>
       item.name.toUpperCase().includes(s.sku.toUpperCase()) &&
       s.size === item.size &&
-      (!s.color || s.color === '' || !item.variant || s.color.toUpperCase() === item.variant.toUpperCase())
+      (!s.color || s.color === '' || s.color.toUpperCase() === item.variant.toUpperCase())
     );
     const available = s ? Math.max(0, s.qty - (s.used || 0)) : 0;
     const deducted = Math.min(available, item.qty);
