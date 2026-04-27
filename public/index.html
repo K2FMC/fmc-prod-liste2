@@ -1,0 +1,373 @@
+<!DOCTYPE html>
+<html lang="fr">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>FMC BETTER — Atelier Paris</title>
+<style>
+  *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+  :root {
+    --bg: #f7f6f3; --surface: #ffffff; --border: #e8e5de; --border-strong: #d0ccc2;
+    --text: #1a1915; --text-muted: #6b6860; --text-faint: #a09d97; --accent: #1a1915;
+    --green-bg: #eaf4ee; --green-text: #1d6b3a; --amber-bg: #fdf3e3; --amber-text: #8a5a00;
+    --blue-bg: #e8f0fb; --blue-text: #1a4a8a; --red-bg: #fdeaea; --red-text: #8a1a1a;
+    --radius: 8px; --radius-lg: 12px;
+  }
+  body { font-family: 'SF Pro Text', -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif; background: var(--bg); color: var(--text); font-size: 14px; line-height: 1.5; min-height: 100vh; }
+  .app { display: flex; min-height: 100vh; }
+  .sidebar { width: 220px; min-height: 100vh; background: var(--surface); border-right: 1px solid var(--border); padding: 1.5rem 0; flex-shrink: 0; position: fixed; top: 0; left: 0; bottom: 0; display: flex; flex-direction: column; }
+  .main { margin-left: 220px; flex: 1; padding: 2rem; max-width: 960px; }
+  .brand { padding: 0 1.25rem 1.5rem; border-bottom: 1px solid var(--border); margin-bottom: 0.5rem; }
+  .brand-name { font-size: 13px; font-weight: 600; letter-spacing: 0.12em; color: var(--text); }
+  .brand-sub { font-size: 11px; color: var(--text-faint); margin-top: 1px; }
+  .nav-item { display: flex; align-items: center; gap: 10px; padding: 8px 1.25rem; font-size: 13px; color: var(--text-muted); cursor: pointer; transition: all 0.1s; border-left: 2px solid transparent; }
+  .nav-item:hover { color: var(--text); background: var(--bg); }
+  .nav-item.active { color: var(--text); background: var(--bg); border-left-color: var(--accent); font-weight: 500; }
+  .nav-icon { width: 16px; height: 16px; opacity: 0.6; flex-shrink: 0; }
+  .nav-item.active .nav-icon { opacity: 1; }
+  .sidebar-footer { margin-top: auto; padding: 1rem 1.25rem 0; border-top: 1px solid var(--border); }
+  .status-dot { width: 7px; height: 7px; border-radius: 50%; background: #ccc; display: inline-block; margin-right: 6px; }
+  .status-dot.connected { background: #2ecc71; }
+  .status-label { font-size: 11px; color: var(--text-faint); }
+  .page-header { margin-bottom: 1.5rem; }
+  .page-title { font-size: 20px; font-weight: 600; color: var(--text); }
+  .page-sub { font-size: 13px; color: var(--text-muted); margin-top: 2px; }
+  .card { background: var(--surface); border: 1px solid var(--border); border-radius: var(--radius-lg); overflow: hidden; margin-bottom: 1rem; }
+  .card-header { padding: 12px 16px; border-bottom: 1px solid var(--border); display: flex; align-items: center; justify-content: space-between; }
+  .card-title { font-size: 13px; font-weight: 500; color: var(--text); }
+  .card-body { padding: 1rem; }
+  .metrics { display: grid; grid-template-columns: repeat(3, 1fr); gap: 10px; margin-bottom: 1.25rem; }
+  .metric { background: var(--surface); border: 1px solid var(--border); border-radius: var(--radius); padding: 14px 16px; }
+  .metric-label { font-size: 11px; color: var(--text-faint); text-transform: uppercase; letter-spacing: 0.06em; margin-bottom: 6px; }
+  .metric-value { font-size: 28px; font-weight: 600; color: var(--text); line-height: 1; }
+  .metric-sub { font-size: 11px; color: var(--text-muted); margin-top: 4px; }
+  table { width: 100%; border-collapse: collapse; }
+  th { font-size: 11px; font-weight: 500; color: var(--text-faint); text-transform: uppercase; letter-spacing: 0.06em; padding: 8px 16px; text-align: left; background: var(--bg); border-bottom: 1px solid var(--border); }
+  td { font-size: 13px; padding: 11px 16px; border-bottom: 1px solid var(--border); color: var(--text); vertical-align: middle; }
+  tr:last-child td { border-bottom: none; }
+  tbody tr:hover td { background: var(--bg); }
+  .badge { display: inline-flex; align-items: center; font-size: 11px; font-weight: 500; padding: 2px 8px; border-radius: 100px; }
+  .badge-green { background: var(--green-bg); color: var(--green-text); }
+  .badge-amber { background: var(--amber-bg); color: var(--amber-text); }
+  .badge-blue { background: var(--blue-bg); color: var(--blue-text); }
+  .btn { display: inline-flex; align-items: center; gap: 6px; padding: 7px 14px; border-radius: var(--radius); border: 1px solid var(--border-strong); background: var(--surface); font-size: 13px; color: var(--text); cursor: pointer; font-family: inherit; transition: all 0.1s; white-space: nowrap; }
+  .btn:hover { background: var(--bg); }
+  .btn:active { transform: scale(0.98); }
+  .btn-primary { background: var(--accent); color: white; border-color: var(--accent); }
+  .btn-primary:hover { background: #333; border-color: #333; }
+  .btn-sm { padding: 4px 10px; font-size: 12px; }
+  .btn-danger { color: var(--red-text); border-color: #f0b0b0; }
+  .btn-danger:hover { background: var(--red-bg); }
+  .form-grid { display: grid; gap: 10px; margin-bottom: 12px; }
+  .form-group { display: flex; flex-direction: column; gap: 4px; }
+  label { font-size: 11px; font-weight: 500; color: var(--text-muted); text-transform: uppercase; letter-spacing: 0.05em; }
+  input[type="text"], input[type="password"], input[type="number"], select { padding: 8px 10px; border: 1px solid var(--border-strong); border-radius: var(--radius); font-size: 13px; font-family: inherit; color: var(--text); background: var(--surface); outline: none; transition: border-color 0.1s; }
+  input:focus, select:focus { border-color: var(--accent); }
+  .section { display: none; }
+  .section.active { display: block; }
+  .empty { text-align: center; padding: 2.5rem; color: var(--text-faint); font-size: 13px; }
+  .qty-main { font-size: 16px; font-weight: 600; }
+  .qty-note { font-size: 11px; color: var(--green-text); margin-top: 2px; }
+  .prod-name { font-weight: 500; font-size: 13px; }
+  .prod-ref { font-size: 11px; color: var(--text-faint); margin-top: 1px; }
+  .csv-box { background: var(--bg); border: 1px solid var(--border); border-radius: var(--radius); padding: 1rem; font-family: 'SF Mono', 'Fira Mono', monospace; font-size: 12px; color: var(--text-muted); white-space: pre; overflow-x: auto; line-height: 1.7; max-height: 320px; overflow-y: auto; }
+  .actions { display: flex; gap: 8px; margin-top: 1rem; }
+  .alert { padding: 10px 14px; border-radius: var(--radius); font-size: 13px; margin-bottom: 1rem; }
+  .alert-red { background: var(--red-bg); color: var(--red-text); border: 1px solid #f0b0b0; }
+  .alert-green { background: var(--green-bg); color: var(--green-text); border: 1px solid #a8ddb8; }
+  .alert-amber { background: var(--amber-bg); color: var(--amber-text); border: 1px solid #f0d090; }
+  .loading { display: flex; align-items: center; gap: 8px; color: var(--text-muted); font-size: 13px; padding: 2rem; justify-content: center; }
+  .spinner { width: 16px; height: 16px; border: 2px solid var(--border); border-top-color: var(--text-muted); border-radius: 50%; animation: spin 0.7s linear infinite; }
+  @keyframes spin { to { transform: rotate(360deg); } }
+  .tag-paris { display: inline-block; font-size: 10px; font-weight: 600; padding: 1px 6px; border-radius: 3px; background: var(--blue-bg); color: var(--blue-text); }
+  .tag-chine { display: inline-block; font-size: 10px; font-weight: 600; padding: 1px 6px; border-radius: 3px; background: var(--bg); color: var(--text-faint); border: 1px solid var(--border); }
+</style>
+</head>
+<body>
+<div class="app">
+  <aside class="sidebar">
+    <div class="brand">
+      <div class="brand-name">FMC BETTER</div>
+      <div class="brand-sub">Gestion atelier Paris</div>
+    </div>
+    <nav>
+      <div class="nav-item active" onclick="showSection('production', this)">
+        <svg class="nav-icon" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.5"><rect x="2" y="2" width="12" height="12" rx="2"/><path d="M5 8h6M5 5h6M5 11h4"/></svg>
+        Production
+      </div>
+      <div class="nav-item" onclick="showSection('surplus', this)">
+        <svg class="nav-icon" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.5"><path d="M8 2v12M2 8h12"/><circle cx="8" cy="8" r="6"/></svg>
+        Surplus atelier
+      </div>
+      <div class="nav-item" onclick="showSection('export', this)">
+        <svg class="nav-icon" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.5"><path d="M3 10v3h10v-3M8 2v8M5 7l3 3 3-3"/></svg>
+        Export CSV
+      </div>
+    </nav>
+    <div class="sidebar-footer">
+      <span class="status-dot" id="status-dot"></span>
+      <span class="status-label" id="status-label">Non connecté</span>
+    </div>
+  </aside>
+
+  <main class="main">
+    <!-- PRODUCTION -->
+    <div id="section-production" class="section active">
+      <div class="page-header">
+        <div class="page-title">Liste de production</div>
+        <div class="page-sub">Commandes non fulfillées — articles à imprimer à l'atelier Paris</div>
+      </div>
+      <div id="prod-alert"></div>
+      <div class="metrics">
+        <div class="metric"><div class="metric-label">Commandes</div><div class="metric-value" id="m-orders">—</div><div class="metric-sub">non fulfillées</div></div>
+        <div class="metric"><div class="metric-label">À imprimer</div><div class="metric-value" id="m-items">—</div><div class="metric-sub">après surplus</div></div>
+        <div class="metric"><div class="metric-label">Déduit surplus</div><div class="metric-value" id="m-deducted">—</div><div class="metric-sub">stock atelier utilisé</div></div>
+      </div>
+      <div class="card">
+        <div class="card-header">
+          <span class="card-title">Articles à imprimer</span>
+          <div style="display:flex;gap:8px;align-items:center">
+            <span class="badge badge-blue" id="prod-count">0 articles</span>
+            <button class="btn btn-sm" onclick="loadOrders()">↺ Actualiser</button>
+          </div>
+        </div>
+        <div id="prod-content"><div class="empty">Configure la connexion Shopify pour charger les commandes.</div></div>
+      </div>
+    </div>
+
+    <!-- SURPLUS -->
+    <div id="section-surplus" class="section">
+      <div class="page-header">
+        <div class="page-title">Surplus atelier</div>
+        <div class="page-sub">Articles imprimés en trop — déduits automatiquement des prochaines listes</div>
+      </div>
+      <div class="card">
+        <div class="card-header"><span class="card-title">Ajouter un article en surplus</span></div>
+        <div class="card-body">
+          <div class="form-grid" style="grid-template-columns:1fr 120px 120px 80px auto;align-items:end">
+           <div class="form-group"><label>SKU / Nom produit</label><input type="text" id="s-sku" placeholder="ex: Money Chasers" /></div>
+           <div class="form-group"><label>Couleur (optionnel)</label><input type="text" id="s-color" placeholder="ex: Blanc" /></div>
+           <div class="form-group"><label>Taille</label>
+             <select id="s-size"><option value="">— Taille —</option><option>XS</option><option>S</option><option>M</option><option>L</option><option>XL</option><option>XXL</option><option>Unique</option></select>
+           </div>
+           <div class="form-group"><label>Quantité</label><input type="number" id="s-qty" placeholder="1" min="1" /></div>
+           <button class="btn btn-primary" onclick="addSurplus()">Ajouter</button>
+         </div>
+          <div id="surplus-err" style="font-size:12px;color:var(--red-text);display:none;margin-top:-6px"></div>
+        </div>
+      </div>
+      <div class="card">
+        <div class="card-header">
+          <span class="card-title">Stock surplus actuel</span>
+          <span class="badge badge-amber" id="surplus-count">0 références</span>
+        </div>
+        <table><thead><tr><th>SKU / Produit</th><th>Taille</th><th>Stock initial</th><th>Consommé</th><th>Disponible</th><th></th></tr></thead>
+        <tbody id="surplus-tbody"></tbody></table>
+      </div>
+    </div>
+
+    <!-- EXPORT -->
+    <div id="section-export" class="section">
+      <div class="page-header">
+        <div class="page-title">Export CSV</div>
+        <div class="page-sub">Fichier à envoyer à l'atelier — généré automatiquement</div>
+      </div>
+      <div class="card">
+        <div class="card-header"><span class="card-title">Aperçu du fichier</span></div>
+        <div class="card-body">
+          <div class="csv-box" id="csv-preview">Charge les commandes depuis l'onglet Production d'abord.</div>
+          <div class="actions">
+            <button class="btn btn-primary" onclick="downloadCSV()">↓ Télécharger CSV</button>
+            <button class="btn" onclick="copyCSV()">Copier</button>
+            <span id="copy-ok" style="font-size:12px;color:var(--green-text);align-self:center;display:none">✓ Copié</span>
+          </div>
+        </div>
+      </div>
+    </div>
+  </main>
+</div>
+
+<script>
+let surplus = [], prodList = [];
+
+function showSection(name, el) {
+  document.querySelectorAll('.section').forEach(s => s.classList.remove('active'));
+  document.querySelectorAll('.nav-item').forEach(n => n.classList.remove('active'));
+  document.getElementById('section-' + name).classList.add('active');
+  el.classList.add('active');
+  if (name === 'production') loadOrders();
+}
+
+async function shopifyQuery(query) {
+  const res = await fetch('/api/shopify', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ query })
+  });
+  const data = await res.json();
+  if (data.error) throw new Error(data.error);
+  if (data.errors) throw new Error(data.errors[0].message);
+  if (!data.data) throw new Error('Réponse vide : ' + JSON.stringify(data));
+  return data.data;
+}
+
+async function loadOrders() {
+  const alertEl = document.getElementById('prod-alert');
+  const contentEl = document.getElementById('prod-content');
+  alertEl.innerHTML = '';
+  contentEl.innerHTML = '<div class="loading"><div class="spinner"></div> Chargement des commandes...</div>';
+  try {
+    const data = await shopifyQuery(`{
+      orders(first: 100, query: "fulfillment_status:unfulfilled status:open") {
+        edges { node { name lineItems(first: 50) { edges { node {
+          title variantTitle quantity
+          variant { sku selectedOptions { name value } }
+          product { tags metafield(namespace: "custom", key: "production_lieu") { value } }
+        } } } } }
+      }
+    }`);
+    processOrders(data.orders.edges);
+  } catch(e) {
+    contentEl.innerHTML = `<div class="alert alert-red" style="margin:1rem">✗ Erreur : ${e.message}</div>`;
+  }
+}
+
+function processOrders(orderEdges) {
+  surplus.forEach(s => s.used = 0);
+  const agg = {};
+  const orderSet = new Set();
+  for (const { node: order } of orderEdges) {
+    let hasParisItem = false;
+    for (const { node: item } of order.lineItems.edges) {
+      const prod = item.product;
+      if (!prod) continue;
+      const lieu = prod.metafield ? prod.metafield.value : null;
+      const isParis = (lieu && lieu.toLowerCase() === 'paris') || (prod.tags || []).includes('print-paris');
+      if (!isParis) continue;
+      hasParisItem = true;
+      const options = item.variant && item.variant.selectedOptions ? item.variant.selectedOptions : [];
+      const sizeOpt = options.find(o => ['taille','size'].includes(o.name.toLowerCase()));
+      const colorOpt = options.find(o => ['couleur','color','colour'].includes(o.name.toLowerCase()));
+      const size = sizeOpt ? sizeOpt.value : 'Unique';
+      const variant = colorOpt ? colorOpt.value : '';
+      const key = item.title + '||' + variant + '||' + size;
+      if (!agg[key]) agg[key] = { name: item.title, variant, size, qty: 0, refs: [] };
+      agg[key].qty += item.quantity;
+      agg[key].refs.push(order.name);
+    }
+    if (hasParisItem) orderSet.add(order.name);
+  }
+  prodList = Object.values(agg).map(item => {
+    const s = surplus.find(s =>
+      item.name.toUpperCase().includes(s.sku.toUpperCase()) &&
+      s.size === item.size &&
+      (!s.color || s.color === '' || !item.variant || s.color.toUpperCase() === item.variant.toUpperCase())
+    );
+    const available = s ? Math.max(0, s.qty - (s.used || 0)) : 0;
+    const deducted = Math.min(available, item.qty);
+    if (s && deducted > 0) s.used = (s.used || 0) + deducted;
+    return { ...item, deducted, toPrint: item.qty - deducted };
+  });
+  renderProdList(orderSet.size);
+  renderCSV();
+  renderSurplus();
+}
+
+function renderProdList(orderCount) {
+  const toPrint = prodList.reduce((a, p) => a + p.toPrint, 0);
+  const deducted = prodList.reduce((a, p) => a + p.deducted, 0);
+  document.getElementById('m-orders').textContent = orderCount;
+  document.getElementById('m-items').textContent = toPrint;
+  document.getElementById('m-deducted').textContent = deducted;
+  document.getElementById('prod-count').textContent = prodList.filter(p => p.toPrint > 0).length + ' articles';
+  if (!prodList.length) { document.getElementById('prod-content').innerHTML = '<div class="empty">Aucune commande en attente de production Paris.</div>'; return; }
+  document.getElementById('prod-content').innerHTML = `
+    <table><thead><tr><th>Produit</th><th>Couleur</th><th>Taille</th><th>Commandé</th><th>À imprimer</th><th>Statut</th></tr></thead><tbody>
+      ${prodList.map(p => `<tr>
+        <td><div class="prod-name">${p.name}</div><div class="prod-ref">${[...new Set(p.refs)].join(', ')}</div></td>
+        <td>${p.variant || '—'}</td><td>${p.size}</td>
+        <td style="color:var(--text-muted)">${p.qty}</td>
+        <td><div class="qty-main">${p.toPrint > 0 ? p.toPrint : '<span style="color:var(--text-faint)">0</span>'}</div>${p.deducted > 0 ? `<div class="qty-note">− ${p.deducted} surplus</div>` : ''}</td>
+        <td>${p.toPrint === 0 ? '<span class="badge badge-green">Couvert surplus</span>' : '<span class="badge badge-blue">À imprimer</span>'}</td>
+      </tr>`).join('')}
+    </tbody></table>`;
+}
+
+async function loadSurplus() {
+  const res = await fetch('/api/surplus');
+  surplus = await res.json();
+  renderSurplus();
+}
+
+async function addSurplus() {
+  const sku = document.getElementById('s-sku').value.trim();
+  const color = document.getElementById('s-color').value.trim();
+  const size = document.getElementById('s-size').value;
+  const qty = parseInt(document.getElementById('s-qty').value);
+  const err = document.getElementById('surplus-err');
+  if (!sku || !size || !qty || qty < 1) { err.textContent = 'Remplis tous les champs.'; err.style.display = 'block'; return; }
+  err.style.display = 'none';
+  await fetch('/api/surplus', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ sku, color, size, qty })
+  });
+  document.getElementById('s-sku').value = '';
+  document.getElementById('s-color').value = '';
+  document.getElementById('s-size').value = '';
+  document.getElementById('s-qty').value = '';
+  await loadSurplus();
+}
+async function removeSurplus(id) {
+  await fetch(`/api/surplus/${id}`, { method: 'DELETE' });
+  await loadSurplus();
+}
+
+function renderSurplus() {
+  document.getElementById('surplus-count').textContent = surplus.length + ' références';
+  const tbody = document.getElementById('surplus-tbody');
+  if (!surplus.length) { tbody.innerHTML = '<tr><td colspan="6" class="empty">Aucun article en surplus.</td></tr>'; return; }
+  tbody.innerHTML = surplus.map(s => {
+    const left = Math.max(0, s.qty - (s.used || 0));
+    return `<tr>
+      <td class="prod-name">${s.sku}</td><td>${s.size}</td><td>${s.qty}</td>
+      <td>${s.used || '—'}</td>
+      <td>${left > 0 ? `<span class="badge badge-green">${left} dispo</span>` : '<span class="badge badge-amber">Épuisé</span>'}</td>
+      <td><button class="btn btn-sm btn-danger" onclick="removeSurplus(${s.id})">Retirer</button></td>
+    </tr>`;
+  }).join('');
+}
+
+function renderCSV() {
+  const date = new Date().toLocaleDateString('fr-FR');
+  const lines = [`FMC BETTER — Liste de production Atelier Paris — ${date}`, '', 'Produit;Couleur;Taille;Quantité à imprimer'];
+  prodList
+    .filter(p => p.toPrint > 0)
+    .sort((a, b) => a.name.localeCompare(b.name, 'fr'))
+    .forEach(p => {
+      lines.push(`"${p.name}";${p.variant || ''};${p.size};${p.toPrint}`);
+    });
+  document.getElementById('csv-preview').textContent = lines.join('\n');
+}
+
+function downloadCSV() {
+  const blob = new Blob([document.getElementById('csv-preview').textContent], { type: 'text/csv;charset=utf-8;' });
+  const a = document.createElement('a');
+  a.href = URL.createObjectURL(blob);
+  a.download = 'fmc-atelier-paris-' + new Date().toISOString().slice(0,10) + '.csv';
+  a.click();
+}
+
+function copyCSV() {
+  navigator.clipboard.writeText(document.getElementById('csv-preview').textContent).then(() => {
+    const ok = document.getElementById('copy-ok');
+    ok.style.display = 'inline';
+    setTimeout(() => ok.style.display = 'none', 2000);
+  });
+}
+
+loadSurplus();
+loadOrders();
+</script>
+</body>
+</html>
