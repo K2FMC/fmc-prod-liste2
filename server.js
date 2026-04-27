@@ -15,11 +15,24 @@ const pool = new Pool({
 });
 
 const STORE = process.env.SHOPIFY_STORE;
-const ACCESS_TOKEN = process.env.SHOPIFY_ACCESS_TOKEN;
+const CLIENT_ID = process.env.SHOPIFY_CLIENT_ID;
+const CLIENT_SECRET = process.env.SHOPIFY_CLIENT_SECRET;
 
-function getShopifyToken() {
-  if (!ACCESS_TOKEN) throw new Error('SHOPIFY_ACCESS_TOKEN non défini');
-  return ACCESS_TOKEN;
+let cachedToken = null;
+let tokenExpiry = 0;
+
+async function getShopifyToken() {
+  if (cachedToken && Date.now() < tokenExpiry - 60000) return cachedToken;
+  const res = await fetch(`https://${STORE}/admin/oauth/access_token`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ client_id: CLIENT_ID, client_secret: CLIENT_SECRET, grant_type: 'client_credentials' })
+  });
+  const data = await res.json();
+  if (data.errors) throw new Error('Auth Shopify échouée');
+  cachedToken = data.access_token;
+  tokenExpiry = Date.now() + (data.expires_in || 86400) * 1000;
+  return cachedToken;
 }
 
 async function initDB() {
@@ -45,9 +58,10 @@ app.get('/', (req, res) => {
 app.post('/api/shopify', async (req, res) => {
   const { query } = req.body;
   try {
+    const token = await getShopifyToken();
     const response = await fetch(`https://${STORE}/admin/api/2024-01/graphql.json`, {
       method: 'POST',
-      headers: { 'Content-Type': 'application/json', 'X-Shopify-Access-Token': getShopifyToken() },
+      headers: { 'Content-Type': 'application/json', 'X-Shopify-Access-Token': token },
       body: JSON.stringify({ query })
     });
     const data = await response.json();
