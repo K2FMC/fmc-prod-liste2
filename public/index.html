@@ -161,7 +161,7 @@
           <span class="card-title">Stock surplus actuel</span>
           <span class="badge badge-amber" id="surplus-count">0 références</span>
         </div>
-        <table><thead><tr><th>SKU / Produit</th><th>Taille</th><th>Stock initial</th><th>Consommé</th><th>Disponible</th><th></th></tr></thead>
+        <table><thead><tr><th>SKU / Produit</th><th>Couleur</th><th>Taille</th><th>Stock initial</th><th>Consommé</th><th>Disponible</th><th></th></tr></thead>
         <tbody id="surplus-tbody"></tbody></table>
       </div>
     </div>
@@ -330,7 +330,7 @@ function renderSurplus() {
   tbody.innerHTML = surplus.map(s => {
     const left = Math.max(0, s.qty - (s.used || 0));
     return `<tr>
-      <td class="prod-name">${s.sku}</td><td>${s.size}</td><td>${s.qty}</td>
+      <td class="prod-name">${s.sku}</td><td>${s.color || '—'}</td><td>${s.size}</td><td>${s.qty}</td>
       <td>${s.used || '—'}</td>
       <td>${left > 0 ? `<span class="badge badge-green">${left} dispo</span>` : '<span class="badge badge-amber">Épuisé</span>'}</td>
       <td><button class="btn btn-sm btn-danger" onclick="removeSurplus(${s.id})">Retirer</button></td>
