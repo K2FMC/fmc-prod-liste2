@@ -100,6 +100,21 @@ app.post('/api/surplus', async (req, res) => {
   }
 });
 
+// PATCH surplus qty
+app.patch('/api/surplus/:id', async (req, res) => {
+  const { delta } = req.body;
+  try {
+    const result = await pool.query(
+      'UPDATE surplus SET qty = GREATEST(0, qty + $1) WHERE id = $2 RETURNING *',
+      [delta, req.params.id]
+    );
+    if (!result.rows.length) return res.status(404).json({ error: 'Non trouvé' });
+    res.json(result.rows[0]);
+  } catch(e) {
+    res.status(500).json({ error: e.message });
+  }
+});
+
 // DELETE surplus
 app.delete('/api/surplus/:id', async (req, res) => {
   try {

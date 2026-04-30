@@ -81,6 +81,13 @@
   @keyframes spin { to { transform: rotate(360deg); } }
   .tag-paris { display: inline-block; font-size: 10px; font-weight: 600; padding: 1px 6px; border-radius: 3px; background: var(--blue-bg); color: var(--blue-text); }
   .tag-chine { display: inline-block; font-size: 10px; font-weight: 600; padding: 1px 6px; border-radius: 3px; background: var(--bg); color: var(--text-faint); border: 1px solid var(--border); }
+  .qty-ctrl { display: inline-flex; align-items: center; gap: 7px; }
+  .qty-ctrl-btn { width: 22px; height: 22px; border-radius: 50%; border: 1px solid var(--border-strong); background: var(--surface); font-size: 15px; cursor: pointer; display: inline-flex; align-items: center; justify-content: center; color: var(--text); transition: all 0.1s; padding: 0; font-family: inherit; line-height: 1; }
+  .qty-ctrl-btn:hover { background: var(--bg); }
+  .th-sort { cursor: pointer; user-select: none; white-space: nowrap; }
+  .th-sort:hover { color: var(--text-muted); }
+  .sort-arrow { font-size: 9px; opacity: 0.35; margin-left: 3px; }
+  .th-sort.sorted .sort-arrow { opacity: 1; color: var(--accent); }
 </style>
 </head>
 <body>
@@ -161,8 +168,7 @@
           <span class="card-title">Stock surplus actuel</span>
           <span class="badge badge-amber" id="surplus-count">0 références</span>
         </div>
-        <table><thead><tr><th>SKU / Produit</th><th>Couleur</th><th>Taille</th><th>Stock initial</th><th>Consommé</th><th>Disponible</th><th></th></tr></thead>
-        <tbody id="surplus-tbody"></tbody></table>
+        <div id="surplus-table"></div>
       </div>
     </div>
 
@@ -189,6 +195,25 @@
 
 <script>
 let surplus = [], prodList = [];
+let surplusSort = { col: 'sku', dir: 'asc' };
+
+function sortSurplus(col) {
+  if (surplusSort.col === col) {
+    surplusSort.dir = surplusSort.dir === 'asc' ? 'desc' : 'asc';
+  } else {
+    surplusSort = { col, dir: 'asc' };
+  }
+  renderSurplus();
+}
+
+async function updateSurplusQty(id, delta) {
+  await fetch(`/api/surplus/${id}`, {
+    method: 'PATCH',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ delta })
+  });
+  await loadSurplus();
+}
 
 function showSection(name, el) {
   document.querySelectorAll('.section').forEach(s => s.classList.remove('active'));
@@ -325,17 +350,60 @@ async function removeSurplus(id) {
 
 function renderSurplus() {
   document.getElementById('surplus-count').textContent = surplus.length + ' références';
-  const tbody = document.getElementById('surplus-tbody');
-  if (!surplus.length) { tbody.innerHTML = '<tr><td colspan="6" class="empty">Aucun article en surplus.</td></tr>'; return; }
-  tbody.innerHTML = surplus.map(s => {
+  const container = document.getElementById('surplus-table');
+  if (!surplus.length) { container.innerHTML = '<div class="empty">Aucun article en surplus.</div>'; return; }
+
+  const sorted = [...surplus].sort((a, b) => {
+    const dir = surplusSort.dir === 'asc' ? 1 : -1;
+    let va, vb;
+    if (surplusSort.col === 'left') {
+      va = Math.max(0, a.qty - (a.used || 0));
+      vb = Math.max(0, b.qty - (b.used || 0));
+    } else if (surplusSort.col === 'used') {
+      va = a.used || 0; vb = b.used || 0;
+    } else {
+      va = a[surplusSort.col] !== undefined ? a[surplusSort.col] : '';
+      vb = b[surplusSort.col] !== undefined ? b[surplusSort.col] : '';
+    }
+    if (typeof va === 'string') return va.localeCompare(vb, 'fr') * dir;
+    return (va - vb) * dir;
+  });
+
+  const cols = [
+    { key: 'sku', label: 'SKU / Produit' },
+    { key: 'color', label: 'Couleur' },
+    { key: 'size', label: 'Taille' },
+    { key: 'qty', label: 'Stock initial' },
+    { key: 'used', label: 'Consommé' },
+    { key: 'left', label: 'Disponible' },
+  ];
+  const thead = `<thead><tr>
+    ${cols.map(c => {
+      const active = surplusSort.col === c.key;
+      const arrow = active ? (surplusSort.dir === 'asc' ? '↑' : '↓') : '↕';
+      return `<th class="th-sort${active ? ' sorted' : ''}" onclick="sortSurplus('${c.key}')">${c.label}<span class="sort-arrow">${arrow}</span></th>`;
+    }).join('')}
+    <th></th>
+  </tr></thead>`;
+
+  const rows = sorted.map(s => {
     const left = Math.max(0, s.qty - (s.used || 0));
     return `<tr>
-      <td class="prod-name">${s.sku}</td><td>${s.color || '—'}</td><td>${s.size}</td><td>${s.qty}</td>
+      <td class="prod-name">${s.sku}</td>
+      <td>${s.color || '—'}</td>
+      <td>${s.size}</td>
+      <td><div class="qty-ctrl">
+        <button class="qty-ctrl-btn" onclick="updateSurplusQty(${s.id}, -1)" title="Décrémenter">−</button>
+        <span>${s.qty}</span>
+        <button class="qty-ctrl-btn" onclick="updateSurplusQty(${s.id}, 1)" title="Incrémenter">+</button>
+      </div></td>
       <td>${s.used || '—'}</td>
       <td>${left > 0 ? `<span class="badge badge-green">${left} dispo</span>` : '<span class="badge badge-amber">Épuisé</span>'}</td>
       <td><button class="btn btn-sm btn-danger" onclick="removeSurplus(${s.id})">Retirer</button></td>
     </tr>`;
   }).join('');
+
+  container.innerHTML = `<table>${thead}<tbody>${rows}</tbody></table>`;
 }
 
 function renderCSV() {
