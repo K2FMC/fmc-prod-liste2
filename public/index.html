@@ -208,8 +208,14 @@ function sortSurplus(col) {
 }
 
 async function commitDeductions() {
-  const deductions = surplus.filter(s => s.used > 0).map(s => ({ id: s.id, used: s.used }));
-  if (!deductions.length) return;
+  const checked = [...document.querySelectorAll('.deduction-check:checked')];
+  if (!checked.length) return;
+  const deductionMap = {};
+  checked.forEach(cb => {
+    const id = parseInt(cb.dataset.surplusId);
+    deductionMap[id] = (deductionMap[id] || 0) + parseInt(cb.dataset.deducted);
+  });
+  const deductions = Object.entries(deductionMap).map(([id, used]) => ({ id: parseInt(id), used }));
   const btn = document.getElementById('commit-btn');
   btn.disabled = true;
   btn.textContent = '…';
@@ -311,7 +317,7 @@ function processOrders(orderEdges) {
     const available = s ? Math.max(0, s.qty - (s.used || 0)) : 0;
     const deducted = Math.min(available, item.qty);
     if (s && deducted > 0) s.used = (s.used || 0) + deducted;
-    return { ...item, deducted, toPrint: item.qty - deducted };
+    return { ...item, deducted, toPrint: item.qty - deducted, surplusId: s ? s.id : null };
   });
   renderProdList(orderSet.size);
   renderCSV();
@@ -325,21 +331,41 @@ function renderProdList(orderCount) {
   document.getElementById('m-items').textContent = toPrint;
   document.getElementById('m-deducted').textContent = deducted;
   document.getElementById('prod-count').textContent = prodList.filter(p => p.toPrint > 0).length + ' articles';
-  const commitBtn = document.getElementById('commit-btn');
-  commitBtn.style.display = deducted > 0 ? 'inline-flex' : 'none';
-  commitBtn.disabled = false;
-  commitBtn.textContent = '✓ Valider les déductions surplus';
+  document.getElementById('commit-btn').style.display = 'none';
   if (!prodList.length) { document.getElementById('prod-content').innerHTML = '<div class="empty">Aucune commande en attente de production Paris.</div>'; return; }
+  const hasDeductions = deducted > 0;
   document.getElementById('prod-content').innerHTML = `
-    <table><thead><tr><th>Produit</th><th>Couleur</th><th>Taille</th><th>Commandé</th><th>À imprimer</th><th>Statut</th></tr></thead><tbody>
+    <table><thead><tr>
+      <th>Produit</th><th>Couleur</th><th>Taille</th><th>Commandé</th><th>À imprimer</th><th>Statut</th>
+      ${hasDeductions ? `<th style="text-align:center;width:60px"><input type="checkbox" id="check-all" checked title="Tout cocher / décocher" onchange="toggleAllDeductions(this.checked)"></th>` : ''}
+    </tr></thead><tbody>
       ${prodList.map(p => `<tr>
         <td><div class="prod-name">${p.name}</div><div class="prod-ref">${[...new Set(p.refs)].join(', ')}</div></td>
         <td>${p.variant || '—'}</td><td>${p.size}</td>
         <td style="color:var(--text-muted)">${p.qty}</td>
         <td><div class="qty-main">${p.toPrint > 0 ? p.toPrint : '<span style="color:var(--text-faint)">0</span>'}</div>${p.deducted > 0 ? `<div class="qty-note">− ${p.deducted} surplus</div>` : ''}</td>
         <td>${p.toPrint === 0 ? '<span class="badge badge-green">Couvert surplus</span>' : '<span class="badge badge-blue">À imprimer</span>'}</td>
+        ${hasDeductions ? `<td style="text-align:center">${p.deducted > 0 ? `<input type="checkbox" class="deduction-check" checked data-surplus-id="${p.surplusId}" data-deducted="${p.deducted}" onchange="updateCommitBtn()">` : ''}</td>` : ''}
       </tr>`).join('')}
     </tbody></table>`;
+  if (hasDeductions) updateCommitBtn();
+}
+
+function toggleAllDeductions(checked) {
+  document.querySelectorAll('.deduction-check').forEach(cb => cb.checked = checked);
+  updateCommitBtn();
+}
+
+function updateCommitBtn() {
+  const checked = [...document.querySelectorAll('.deduction-check:checked')];
+  const btn = document.getElementById('commit-btn');
+  const total = checked.reduce((a, cb) => a + parseInt(cb.dataset.deducted), 0);
+  btn.style.display = checked.length > 0 ? 'inline-flex' : 'none';
+  btn.disabled = false;
+  btn.textContent = `✓ Valider ${total} article${total > 1 ? 's' : ''} déduit${total > 1 ? 's' : ''}`;
+  const allCbs = document.querySelectorAll('.deduction-check');
+  const checkAll = document.getElementById('check-all');
+  if (checkAll) checkAll.checked = checked.length === allCbs.length;
 }
 
 async function loadSurplus() {
