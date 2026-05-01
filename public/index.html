@@ -135,6 +135,7 @@
           <span class="card-title">Articles à imprimer</span>
           <div style="display:flex;gap:8px;align-items:center">
             <span class="badge badge-blue" id="prod-count">0 articles</span>
+            <button class="btn btn-sm btn-primary" id="commit-btn" onclick="commitDeductions()" style="display:none">✓ Valider les déductions surplus</button>
             <button class="btn btn-sm" onclick="loadOrders()">↺ Actualiser</button>
           </div>
         </div>
@@ -204,6 +205,25 @@ function sortSurplus(col) {
     surplusSort = { col, dir: 'asc' };
   }
   renderSurplus();
+}
+
+async function commitDeductions() {
+  const deductions = surplus.filter(s => s.used > 0).map(s => ({ id: s.id, used: s.used }));
+  if (!deductions.length) return;
+  const btn = document.getElementById('commit-btn');
+  btn.disabled = true;
+  btn.textContent = '…';
+  await fetch('/api/surplus/commit', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ deductions })
+  });
+  const total = deductions.reduce((a, d) => a + d.used, 0);
+  const alertEl = document.getElementById('prod-alert');
+  alertEl.innerHTML = `<div class="alert alert-green">✓ ${total} article${total > 1 ? 's' : ''} déduit${total > 1 ? 's' : ''} définitivement du stock surplus.</div>`;
+  setTimeout(() => alertEl.innerHTML = '', 5000);
+  await loadSurplus();
+  await loadOrders();
 }
 
 async function updateSurplusQty(id, delta) {
@@ -305,6 +325,10 @@ function renderProdList(orderCount) {
   document.getElementById('m-items').textContent = toPrint;
   document.getElementById('m-deducted').textContent = deducted;
   document.getElementById('prod-count').textContent = prodList.filter(p => p.toPrint > 0).length + ' articles';
+  const commitBtn = document.getElementById('commit-btn');
+  commitBtn.style.display = deducted > 0 ? 'inline-flex' : 'none';
+  commitBtn.disabled = false;
+  commitBtn.textContent = '✓ Valider les déductions surplus';
   if (!prodList.length) { document.getElementById('prod-content').innerHTML = '<div class="empty">Aucune commande en attente de production Paris.</div>'; return; }
   document.getElementById('prod-content').innerHTML = `
     <table><thead><tr><th>Produit</th><th>Couleur</th><th>Taille</th><th>Commandé</th><th>À imprimer</th><th>Statut</th></tr></thead><tbody>

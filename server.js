@@ -115,6 +115,24 @@ app.patch('/api/surplus/:id', async (req, res) => {
   }
 });
 
+// POST surplus/commit — persiste les déductions définitivement
+app.post('/api/surplus/commit', async (req, res) => {
+  const { deductions } = req.body; // [{ id, used }]
+  try {
+    for (const { id, used } of deductions) {
+      if (used > 0) {
+        await pool.query(
+          'UPDATE surplus SET qty = GREATEST(0, qty - $1) WHERE id = $2',
+          [used, id]
+        );
+      }
+    }
+    res.json({ success: true });
+  } catch(e) {
+    res.status(500).json({ error: e.message });
+  }
+});
+
 // DELETE surplus
 app.delete('/api/surplus/:id', async (req, res) => {
   try {
