@@ -139,6 +139,18 @@
             <button class="btn btn-sm" onclick="loadOrders()">↺ Actualiser</button>
           </div>
         </div>
+        <div style="padding:10px 16px;border-bottom:1px solid var(--border);display:flex;gap:8px;align-items:center">
+          <input type="text" id="pf-search" placeholder="Rechercher un produit…" style="flex:1;padding:6px 10px;font-size:12px" oninput="applyProdFilter()">
+          <select id="pf-size" style="font-size:12px;padding:6px 8px" onchange="applyProdFilter()">
+            <option value="">Toutes tailles</option>
+            <option>XS</option><option>S</option><option>M</option><option>L</option><option>XL</option><option>XXL</option><option>Unique</option>
+          </select>
+          <select id="pf-status" style="font-size:12px;padding:6px 8px" onchange="applyProdFilter()">
+            <option value="">Tous statuts</option>
+            <option value="print">À imprimer</option>
+            <option value="covered">Couvert surplus</option>
+          </select>
+        </div>
         <div id="prod-content"><div class="empty">Configure la connexion Shopify pour charger les commandes.</div></div>
       </div>
     </div>
@@ -197,6 +209,28 @@
 <script>
 let surplus = [], prodList = [];
 let surplusSort = { col: 'sku', dir: 'asc' };
+let prodSort = { col: 'name', dir: 'asc' };
+let prodFilter = { search: '', size: '', status: '' };
+let lastOrderCount = 0;
+const SIZE_ORDER = ['XS', 'S', 'M', 'L', 'XL', 'XXL', 'Unique'];
+
+function sortProd(col) {
+  if (prodSort.col === col) {
+    prodSort.dir = prodSort.dir === 'asc' ? 'desc' : 'asc';
+  } else {
+    prodSort = { col, dir: 'asc' };
+  }
+  renderProdList(lastOrderCount);
+}
+
+function applyProdFilter() {
+  prodFilter = {
+    search: document.getElementById('pf-search').value.toLowerCase(),
+    size: document.getElementById('pf-size').value,
+    status: document.getElementById('pf-status').value,
+  };
+  renderProdList(lastOrderCount);
+}
 
 function sortSurplus(col) {
   if (surplusSort.col === col) {
@@ -325,6 +359,7 @@ function processOrders(orderEdges) {
 }
 
 function renderProdList(orderCount) {
+  lastOrderCount = orderCount;
   const toPrint = prodList.reduce((a, p) => a + p.toPrint, 0);
   const deducted = prodList.reduce((a, p) => a + p.deducted, 0);
   document.getElementById('m-orders').textContent = orderCount;
@@ -333,21 +368,60 @@ function renderProdList(orderCount) {
   document.getElementById('prod-count').textContent = prodList.filter(p => p.toPrint > 0).length + ' articles';
   document.getElementById('commit-btn').style.display = 'none';
   if (!prodList.length) { document.getElementById('prod-content').innerHTML = '<div class="empty">Aucune commande en attente de production Paris.</div>'; return; }
+
+  // Filter
+  let filtered = prodList.filter(p => {
+    if (prodFilter.search && !p.name.toLowerCase().includes(prodFilter.search)) return false;
+    if (prodFilter.size && p.size !== prodFilter.size) return false;
+    if (prodFilter.status === 'print' && p.toPrint === 0) return false;
+    if (prodFilter.status === 'covered' && p.toPrint > 0) return false;
+    return true;
+  });
+
+  // Sort
+  filtered.sort((a, b) => {
+    const dir = prodSort.dir === 'asc' ? 1 : -1;
+    if (prodSort.col === 'size') {
+      const ia = SIZE_ORDER.indexOf(a.size), ib = SIZE_ORDER.indexOf(b.size);
+      const sa = ia === -1 ? 99 : ia, sb = ib === -1 ? 99 : ib;
+      return (sa - sb) * dir || a.name.localeCompare(b.name, 'fr');
+    }
+    let va = a[prodSort.col] !== undefined ? a[prodSort.col] : '';
+    let vb = b[prodSort.col] !== undefined ? b[prodSort.col] : '';
+    if (typeof va === 'string') return va.localeCompare(vb, 'fr') * dir;
+    return (va - vb) * dir;
+  });
+
   const hasDeductions = deducted > 0;
-  document.getElementById('prod-content').innerHTML = `
-    <table><thead><tr>
-      <th>Produit</th><th>Couleur</th><th>Taille</th><th>Commandé</th><th>À imprimer</th><th>Statut</th>
-      ${hasDeductions ? `<th style="text-align:center;width:60px"><input type="checkbox" id="check-all" checked title="Tout cocher / décocher" onchange="toggleAllDeductions(this.checked)"></th>` : ''}
-    </tr></thead><tbody>
-      ${prodList.map(p => `<tr>
-        <td><div class="prod-name">${p.name}</div><div class="prod-ref">${[...new Set(p.refs)].join(', ')}</div></td>
-        <td>${p.variant || '—'}</td><td>${p.size}</td>
-        <td style="color:var(--text-muted)">${p.qty}</td>
-        <td><div class="qty-main">${p.toPrint > 0 ? p.toPrint : '<span style="color:var(--text-faint)">0</span>'}</div>${p.deducted > 0 ? `<div class="qty-note">− ${p.deducted} surplus</div>` : ''}</td>
-        <td>${p.toPrint === 0 ? '<span class="badge badge-green">Couvert surplus</span>' : '<span class="badge badge-blue">À imprimer</span>'}</td>
-        ${hasDeductions ? `<td style="text-align:center">${p.deducted > 0 ? `<input type="checkbox" class="deduction-check" checked data-surplus-id="${p.surplusId}" data-deducted="${p.deducted}" onchange="updateCommitBtn()">` : ''}</td>` : ''}
-      </tr>`).join('')}
-    </tbody></table>`;
+  const prodCols = [
+    { key: 'name', label: 'Produit' },
+    { key: 'variant', label: 'Couleur' },
+    { key: 'size', label: 'Taille' },
+    { key: 'qty', label: 'Commandé' },
+    { key: 'toPrint', label: 'À imprimer' },
+    { key: 'toPrint', label: 'Statut', noSort: true },
+  ];
+  const thead = `<thead><tr>
+    ${prodCols.map(c => {
+      if (c.noSort) return `<th>${c.label}</th>`;
+      const isActive = prodSort.col === c.key;
+      const arrow = isActive ? (prodSort.dir === 'asc' ? '↑' : '↓') : '↕';
+      return `<th class="th-sort${isActive ? ' sorted' : ''}" onclick="sortProd('${c.key}')">${c.label}<span class="sort-arrow">${arrow}</span></th>`;
+    }).join('')}
+    ${hasDeductions ? `<th style="text-align:center;width:60px"><input type="checkbox" id="check-all" checked title="Tout cocher / décocher" onchange="toggleAllDeductions(this.checked)"></th>` : ''}
+  </tr></thead>`;
+
+  const emptyMsg = filtered.length === 0 ? '<tr><td colspan="7"><div class="empty">Aucun article ne correspond aux filtres.</div></td></tr>' : '';
+  const rows = filtered.map(p => `<tr>
+    <td><div class="prod-name">${p.name}</div><div class="prod-ref">${[...new Set(p.refs)].join(', ')}</div></td>
+    <td>${p.variant || '—'}</td><td>${p.size}</td>
+    <td style="color:var(--text-muted)">${p.qty}</td>
+    <td><div class="qty-main">${p.toPrint > 0 ? p.toPrint : '<span style="color:var(--text-faint)">0</span>'}</div>${p.deducted > 0 ? `<div class="qty-note">− ${p.deducted} surplus</div>` : ''}</td>
+    <td>${p.toPrint === 0 ? '<span class="badge badge-green">Couvert surplus</span>' : '<span class="badge badge-blue">À imprimer</span>'}</td>
+    ${hasDeductions ? `<td style="text-align:center">${p.deducted > 0 ? `<input type="checkbox" class="deduction-check" checked data-surplus-id="${p.surplusId}" data-deducted="${p.deducted}" onchange="updateCommitBtn()">` : ''}</td>` : ''}
+  </tr>`).join('');
+
+  document.getElementById('prod-content').innerHTML = `<table>${thead}<tbody>${emptyMsg}${rows}</tbody></table>`;
   if (hasDeductions) updateCommitBtn();
 }
 
