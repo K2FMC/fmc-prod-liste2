@@ -307,7 +307,7 @@ async function loadOrders() {
         edges { node { name lineItems(first: 50) { edges { node {
           title variantTitle quantity
           variant { sku selectedOptions { name value } }
-          product { tags metafield(namespace: "custom", key: "production_lieu") { value } }
+          product { tags metafield(namespace: "custom", key: "production_lieu") { value } images(first: 1) { edges { node { url } } } }
         } } } } }
       }
     }`);
@@ -335,8 +335,9 @@ function processOrders(orderEdges) {
       const colorOpt = options.find(o => ['couleur','color','colour'].includes(o.name.toLowerCase()));
       const size = sizeOpt ? sizeOpt.value : 'Unique';
       const variant = colorOpt ? colorOpt.value : '';
+      const imageUrl = item.product.images?.edges?.[0]?.node?.url || '';
       const key = item.title + '||' + variant + '||' + size;
-      if (!agg[key]) agg[key] = { name: item.title, variant, size, qty: 0, refs: [] };
+      if (!agg[key]) agg[key] = { name: item.title, variant, size, qty: 0, refs: [], imageUrl };
       agg[key].qty += item.quantity;
       agg[key].refs.push(order.name);
     }
@@ -532,12 +533,12 @@ function renderSurplus() {
 
 function renderCSV() {
   const date = new Date().toLocaleDateString('fr-FR');
-  const lines = [`FMC BETTER — Liste de production Atelier Paris — ${date}`, '', 'Produit;Couleur;Taille;Quantité à imprimer'];
+  const lines = [`FMC BETTER — Liste de production Atelier Paris — ${date}`, '', 'Produit;Couleur;Taille;Quantité à imprimer;Photo'];
   prodList
     .filter(p => p.toPrint > 0)
     .sort((a, b) => a.name.localeCompare(b.name, 'fr'))
     .forEach(p => {
-      lines.push(`"${p.name}";${p.variant || ''};${p.size};${p.toPrint}`);
+      lines.push(`"${p.name}";${p.variant || ''};${p.size};${p.toPrint};${p.imageUrl || ''}`);
     });
   document.getElementById('csv-preview').textContent = lines.join('\n');
 }
