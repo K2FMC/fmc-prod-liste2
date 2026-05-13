@@ -3,6 +3,7 @@ const fetch = require('node-fetch');
 const cors = require('cors');
 const path = require('path');
 const { Pool } = require('pg');
+const ExcelJS = require('exceljs');
 
 const app = express();
 app.use(cors());
@@ -138,6 +139,86 @@ app.delete('/api/surplus/:id', async (req, res) => {
   try {
     await pool.query('DELETE FROM surplus WHERE id = $1', [req.params.id]);
     res.json({ success: true });
+  } catch(e) {
+    res.status(500).json({ error: e.message });
+  }
+});
+
+// POST /api/export — génère un fichier .xlsx avec images intégrées
+app.post('/api/export', async (req, res) => {
+  const { items, date } = req.body;
+  try {
+    const workbook = new ExcelJS.Workbook();
+    const sheet = workbook.addWorksheet('Production');
+
+    sheet.columns = [
+      { key: 'name',    width: 36 },
+      { key: 'variant', width: 16 },
+      { key: 'size',    width: 10 },
+      { key: 'qty',     width: 16 },
+      { key: 'photo',   width: 14 },
+    ];
+
+    // Ligne titre
+    sheet.mergeCells('A1:E1');
+    const titleCell = sheet.getCell('A1');
+    titleCell.value = `FMC BETTER — Liste de production Atelier Paris — ${date}`;
+    titleCell.font = { bold: true, size: 13 };
+    titleCell.alignment = { vertical: 'middle' };
+    sheet.getRow(1).height = 28;
+
+    // Ligne header
+    const headerRow = sheet.addRow(['Produit', 'Couleur', 'Taille', 'Qté à imprimer', 'Photo']);
+    headerRow.height = 24;
+    headerRow.eachCell(cell => {
+      cell.font = { bold: true, color: { argb: 'FFFFFFFF' }, size: 11 };
+      cell.fill = { type: 'pattern', pattern: 'solid', fgColor: { argb: 'FF1A1915' } };
+      cell.alignment = { vertical: 'middle', horizontal: 'center' };
+    });
+
+    // Lignes de données
+    for (let i = 0; i < items.length; i++) {
+      const item = items[i];
+      const rowNum = i + 3; // 1=titre, 2=header, 3+=données
+      const row = sheet.getRow(rowNum);
+      row.height = 80;
+
+      row.getCell(1).value = item.name;
+      row.getCell(2).value = item.variant || '';
+      row.getCell(3).value = item.size;
+      row.getCell(4).value = item.toPrint;
+
+      for (let c = 1; c <= 4; c++) {
+        row.getCell(c).alignment = { vertical: 'middle', wrapText: true };
+        if (i % 2 === 1) {
+          row.getCell(c).fill = { type: 'pattern', pattern: 'solid', fgColor: { argb: 'FFF7F6F3' } };
+        }
+      }
+
+      if (item.imageUrl) {
+        try {
+          const imgRes = await fetch(item.imageUrl);
+          const buffer = await imgRes.buffer();
+          const urlPath = item.imageUrl.split('?')[0].toLowerCase();
+          const ext = urlPath.endsWith('.png') ? 'png' : 'jpeg';
+          const imageId = workbook.addImage({ buffer, extension: ext });
+          sheet.addImage(imageId, {
+            tl: { col: 4, row: rowNum - 1 },
+            br: { col: 5, row: rowNum },
+            editAs: 'twoCell',
+          });
+        } catch(_) {
+          row.getCell(5).value = 'N/A';
+        }
+      }
+
+      row.commit();
+    }
+
+    res.setHeader('Content-Type', 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet');
+    res.setHeader('Content-Disposition', `attachment; filename="fmc-atelier-paris-${date}.xlsx"`);
+    await workbook.xlsx.write(res);
+    res.end();
   } catch(e) {
     res.status(500).json({ error: e.message });
   }

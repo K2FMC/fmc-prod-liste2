@@ -196,9 +196,10 @@
         <div class="card-body">
           <div class="csv-box" id="csv-preview">Charge les commandes depuis l'onglet Production d'abord.</div>
           <div class="actions">
-            <button class="btn btn-primary" onclick="downloadCSV()">↓ Télécharger CSV</button>
-            <button class="btn" onclick="copyCSV()">Copier</button>
+            <button class="btn btn-primary" onclick="downloadXLSX()" id="xlsx-btn">↓ Télécharger XLSX</button>
+            <button class="btn" onclick="copyCSV()">Copier CSV</button>
             <span id="copy-ok" style="font-size:12px;color:var(--green-text);align-self:center;display:none">✓ Copié</span>
+            <span id="xlsx-err" style="font-size:12px;color:var(--red-text);align-self:center;display:none"></span>
           </div>
         </div>
       </div>
@@ -549,12 +550,34 @@ function renderCSV() {
   document.getElementById('csv-preview').textContent = buildCSVLines(false).join('\n');
 }
 
-function downloadCSV() {
-  const blob = new Blob([buildCSVLines(true).join('\n')], { type: 'text/csv;charset=utf-8;' });
-  const a = document.createElement('a');
-  a.href = URL.createObjectURL(blob);
-  a.download = 'fmc-atelier-paris-' + new Date().toISOString().slice(0,10) + '.csv';
-  a.click();
+async function downloadXLSX() {
+  const btn = document.getElementById('xlsx-btn');
+  const errEl = document.getElementById('xlsx-err');
+  errEl.style.display = 'none';
+  const items = prodList.filter(p => p.toPrint > 0).sort((a, b) => a.name.localeCompare(b.name, 'fr'));
+  if (!items.length) { errEl.textContent = 'Aucun article à exporter.'; errEl.style.display = 'inline'; return; }
+  btn.disabled = true;
+  btn.textContent = '…';
+  try {
+    const date = new Date().toLocaleDateString('fr-FR');
+    const res = await fetch('/api/export', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ items, date })
+    });
+    if (!res.ok) { const d = await res.json(); throw new Error(d.error); }
+    const blob = await res.blob();
+    const a = document.createElement('a');
+    a.href = URL.createObjectURL(blob);
+    a.download = 'fmc-atelier-paris-' + new Date().toISOString().slice(0,10) + '.xlsx';
+    a.click();
+  } catch(e) {
+    errEl.textContent = '✗ ' + e.message;
+    errEl.style.display = 'inline';
+  } finally {
+    btn.disabled = false;
+    btn.textContent = '↓ Télécharger XLSX';
+  }
 }
 
 function copyCSV() {
