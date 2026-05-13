@@ -531,20 +531,26 @@ function renderSurplus() {
   container.innerHTML = `<table>${thead}<tbody>${rows}</tbody></table>`;
 }
 
-function renderCSV() {
+function buildCSVLines(includePhoto) {
   const date = new Date().toLocaleDateString('fr-FR');
-  const lines = [`FMC BETTER — Liste de production Atelier Paris — ${date}`, '', 'Produit;Couleur;Taille;Quantité à imprimer;Photo'];
+  const header = includePhoto ? 'Produit;Couleur;Taille;Quantité à imprimer;Photo' : 'Produit;Couleur;Taille;Quantité à imprimer';
+  const lines = [`FMC BETTER — Liste de production Atelier Paris — ${date}`, '', header];
   prodList
     .filter(p => p.toPrint > 0)
     .sort((a, b) => a.name.localeCompare(b.name, 'fr'))
     .forEach(p => {
-      lines.push(`"${p.name}";${p.variant || ''};${p.size};${p.toPrint};${p.imageUrl || ''}`);
+      const row = `"${p.name}";${p.variant || ''};${p.size};${p.toPrint}`;
+      lines.push(includePhoto ? row + `;${p.imageUrl ? `=IMAGE("${p.imageUrl}")` : ''}` : row);
     });
-  document.getElementById('csv-preview').textContent = lines.join('\n');
+  return lines;
+}
+
+function renderCSV() {
+  document.getElementById('csv-preview').textContent = buildCSVLines(false).join('\n');
 }
 
 function downloadCSV() {
-  const blob = new Blob([document.getElementById('csv-preview').textContent], { type: 'text/csv;charset=utf-8;' });
+  const blob = new Blob([buildCSVLines(true).join('\n')], { type: 'text/csv;charset=utf-8;' });
   const a = document.createElement('a');
   a.href = URL.createObjectURL(blob);
   a.download = 'fmc-atelier-paris-' + new Date().toISOString().slice(0,10) + '.csv';
