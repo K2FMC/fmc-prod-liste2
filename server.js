@@ -221,11 +221,13 @@ app.post('/api/export', async (req, res) => {
           const urlPath = item.imageUrl.split('?')[0].toLowerCase();
           const ext = urlPath.endsWith('.png') ? 'png' : 'jpeg';
           const imageId = workbook.addImage({ buffer, extension: ext });
-          const MAX = 72;
+          // col width 14 chars ≈ 98px, row height 80pt * (96/72) ≈ 107px — marge de 4px
+          const CELL_W_PX = 94;
+          const CELL_H_PX = 103;
           const dims = getImageDimensions(buffer, ext);
-          let imgW = MAX, imgH = MAX;
+          let imgW = CELL_W_PX, imgH = CELL_H_PX;
           if (dims) {
-            const ratio = Math.min(MAX / dims.width, MAX / dims.height);
+            const ratio = Math.min(CELL_W_PX / dims.width, CELL_H_PX / dims.height);
             imgW = Math.round(dims.width * ratio);
             imgH = Math.round(dims.height * ratio);
           }
