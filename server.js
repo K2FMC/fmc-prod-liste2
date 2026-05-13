@@ -5,6 +5,25 @@ const path = require('path');
 const { Pool } = require('pg');
 const ExcelJS = require('exceljs');
 
+function getImageDimensions(buffer, ext) {
+  try {
+    if (ext === 'png') {
+      return { width: buffer.readUInt32BE(16), height: buffer.readUInt32BE(20) };
+    }
+    // JPEG — cherche le marqueur SOF0/SOF1/SOF2
+    let i = 2;
+    while (i < buffer.length - 9) {
+      if (buffer[i] !== 0xFF) break;
+      const marker = buffer[i + 1];
+      if (marker === 0xC0 || marker === 0xC1 || marker === 0xC2) {
+        return { width: buffer.readUInt16BE(i + 7), height: buffer.readUInt16BE(i + 5) };
+      }
+      i += 2 + buffer.readUInt16BE(i + 2);
+    }
+  } catch(_) {}
+  return null;
+}
+
 const app = express();
 app.use(cors());
 app.use(express.json());
@@ -202,10 +221,17 @@ app.post('/api/export', async (req, res) => {
           const urlPath = item.imageUrl.split('?')[0].toLowerCase();
           const ext = urlPath.endsWith('.png') ? 'png' : 'jpeg';
           const imageId = workbook.addImage({ buffer, extension: ext });
+          const MAX = 72;
+          const dims = getImageDimensions(buffer, ext);
+          let imgW = MAX, imgH = MAX;
+          if (dims) {
+            const ratio = Math.min(MAX / dims.width, MAX / dims.height);
+            imgW = Math.round(dims.width * ratio);
+            imgH = Math.round(dims.height * ratio);
+          }
           sheet.addImage(imageId, {
             tl: { col: 4, row: rowNum - 1 },
-            br: { col: 5, row: rowNum },
-            editAs: 'twoCell',
+            ext: { width: imgW, height: imgH },
           });
         } catch(_) {
           row.getCell(5).value = 'N/A';
