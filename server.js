@@ -174,12 +174,13 @@ app.post('/api/export', async (req, res) => {
       { key: 'name',    width: 36 },
       { key: 'variant', width: 16 },
       { key: 'size',    width: 10 },
+      { key: 'type',    width: 18 },
       { key: 'qty',     width: 16 },
       { key: 'photo',   width: 14 },
     ];
 
     // Ligne titre
-    sheet.mergeCells('A1:E1');
+    sheet.mergeCells('A1:F1');
     const titleCell = sheet.getCell('A1');
     titleCell.value = `FMC BETTER — Liste de production Atelier Paris — ${date}`;
     titleCell.font = { bold: true, size: 13 };
@@ -187,7 +188,7 @@ app.post('/api/export', async (req, res) => {
     sheet.getRow(1).height = 28;
 
     // Ligne header
-    const headerRow = sheet.addRow(['Produit', 'Couleur', 'Taille', 'Qté à imprimer', 'Photo']);
+    const headerRow = sheet.addRow(['Produit', 'Couleur', 'Taille', 'Type impression', 'Qté à imprimer', 'Photo']);
     headerRow.height = 24;
     headerRow.eachCell(cell => {
       cell.font = { bold: true, color: { argb: 'FFFFFFFF' }, size: 11 };
@@ -205,9 +206,10 @@ app.post('/api/export', async (req, res) => {
       row.getCell(1).value = item.name;
       row.getCell(2).value = item.variant || '';
       row.getCell(3).value = item.size;
-      row.getCell(4).value = item.toPrint;
+      row.getCell(4).value = item.typeImpression || '';
+      row.getCell(5).value = item.toPrint;
 
-      for (let c = 1; c <= 4; c++) {
+      for (let c = 1; c <= 5; c++) {
         row.getCell(c).alignment = { vertical: 'middle', wrapText: true };
         if (i % 2 === 1) {
           row.getCell(c).fill = { type: 'pattern', pattern: 'solid', fgColor: { argb: 'FFF7F6F3' } };
@@ -232,7 +234,7 @@ app.post('/api/export', async (req, res) => {
             imgH = Math.round(dims.height * ratio);
           }
           sheet.addImage(imageId, {
-            tl: { col: 4, row: rowNum - 1 },
+            tl: { col: 5, row: rowNum - 1 },
             ext: { width: imgW, height: imgH },
           });
         } catch(_) {

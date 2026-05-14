@@ -308,7 +308,7 @@ async function loadOrders() {
         edges { node { name lineItems(first: 50) { edges { node {
           title variantTitle quantity
           variant { sku selectedOptions { name value } image { url } }
-          product { tags metafield(namespace: "custom", key: "production_lieu") { value } images(first: 1) { edges { node { url } } } }
+          product { tags metafield(namespace: "custom", key: "production_lieu") { value } typeImpression: metafield(namespace: "custom", key: "type_impression") { value } images(first: 1) { edges { node { url } } } }
         } } } } }
       }
     }`);
@@ -337,8 +337,9 @@ function processOrders(orderEdges) {
       const size = sizeOpt ? sizeOpt.value : 'Unique';
       const variant = colorOpt ? colorOpt.value : '';
       const imageUrl = item.variant?.image?.url || item.product.images?.edges?.[0]?.node?.url || '';
+      const typeImpression = item.product.typeImpression?.value || '';
       const key = item.title + '||' + variant + '||' + size;
-      if (!agg[key]) agg[key] = { name: item.title, variant, size, qty: 0, refs: [], imageUrl };
+      if (!agg[key]) agg[key] = { name: item.title, variant, size, qty: 0, refs: [], imageUrl, typeImpression };
       agg[key].qty += item.quantity;
       agg[key].refs.push(order.name);
     }
@@ -534,13 +535,13 @@ function renderSurplus() {
 
 function buildCSVLines(includePhoto) {
   const date = new Date().toLocaleDateString('fr-FR');
-  const header = includePhoto ? 'Produit;Couleur;Taille;Quantité à imprimer;Photo' : 'Produit;Couleur;Taille;Quantité à imprimer';
+  const header = includePhoto ? 'Produit;Couleur;Taille;Type impression;Quantité à imprimer;Photo' : 'Produit;Couleur;Taille;Type impression;Quantité à imprimer';
   const lines = [`FMC BETTER — Liste de production Atelier Paris — ${date}`, '', header];
   prodList
     .filter(p => p.toPrint > 0)
     .sort((a, b) => a.name.localeCompare(b.name, 'fr'))
     .forEach(p => {
-      const row = `"${p.name}";${p.variant || ''};${p.size};${p.toPrint}`;
+      const row = `"${p.name}";${p.variant || ''};${p.size};${p.typeImpression || ''};${p.toPrint}`;
       lines.push(includePhoto ? row + `;${p.imageUrl ? `=IMAGE("${p.imageUrl}")` : ''}` : row);
     });
   return lines;
