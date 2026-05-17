@@ -88,6 +88,11 @@
   .th-sort:hover { color: var(--text-muted); }
   .sort-arrow { font-size: 9px; opacity: 0.35; margin-left: 3px; }
   .th-sort.sorted .sort-arrow { opacity: 1; color: var(--accent); }
+  .nav-badge { background: var(--accent); color: white; font-size: 10px; font-weight: 600; padding: 1px 6px; border-radius: 100px; margin-left: auto; }
+  .validate-card { background: var(--surface); border: 1px solid var(--border); border-radius: var(--radius-lg); overflow: hidden; margin-bottom: 1rem; }
+  .validate-card-header { padding: 12px 16px; border-bottom: 1px solid var(--border); display: flex; align-items: center; justify-content: space-between; }
+  .validate-order-ref { font-size: 13px; font-weight: 600; color: var(--text); }
+  .validate-actions { display: flex; gap: 6px; }
 </style>
 </head>
 <body>
@@ -105,6 +110,11 @@
       <div class="nav-item" onclick="showSection('surplus', this)">
         <svg class="nav-icon" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.5"><path d="M8 2v12M2 8h12"/><circle cx="8" cy="8" r="6"/></svg>
         Surplus atelier
+      </div>
+      <div class="nav-item" onclick="showSection('validate', this)" id="nav-validate">
+        <svg class="nav-icon" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.5"><path d="M2 8l4 4 8-8"/></svg>
+        À valider
+        <span class="nav-badge" id="validate-badge" style="display:none">0</span>
       </div>
       <div class="nav-item" onclick="showSection('export', this)">
         <svg class="nav-icon" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.5"><path d="M3 10v3h10v-3M8 2v8M5 7l3 3 3-3"/></svg>
@@ -135,7 +145,6 @@
           <span class="card-title">Articles à imprimer</span>
           <div style="display:flex;gap:8px;align-items:center">
             <span class="badge badge-blue" id="prod-count">0 articles</span>
-            <button class="btn btn-sm btn-primary" id="commit-btn" onclick="commitDeductions()" style="display:none">✓ Valider les déductions surplus</button>
             <button class="btn btn-sm" onclick="loadOrders()">↺ Actualiser</button>
           </div>
         </div>
@@ -204,11 +213,23 @@
         </div>
       </div>
     </div>
+
+    <!-- À VALIDER -->
+    <div id="section-validate" class="section">
+      <div class="page-header" style="display:flex;align-items:flex-start;justify-content:space-between">
+        <div>
+          <div class="page-title">À valider</div>
+          <div class="page-sub">Commandes expédiées — confirme si tu as utilisé le stock surplus</div>
+        </div>
+        <div style="display:flex;gap:8px" id="validate-bulk-actions"></div>
+      </div>
+      <div id="validate-content"></div>
+    </div>
   </main>
 </div>
 
 <script>
-let surplus = [], prodList = [];
+let surplus = [], prodList = [], pendingDeductions = [];
 let surplusSort = { col: 'sku', dir: 'asc' };
 let prodSort = { col: 'name', dir: 'asc' };
 let prodFilter = { search: '', size: '', status: '' };
@@ -242,29 +263,105 @@ function sortSurplus(col) {
   renderSurplus();
 }
 
-async function commitDeductions() {
-  const checked = [...document.querySelectorAll('.deduction-check:checked')];
-  if (!checked.length) return;
+function updateValidateBadge() {
+  const toConfirm = JSON.parse(localStorage.getItem('fmc_to_confirm') || '[]');
+  const refs = [...new Set(toConfirm.map(d => d.orderRef))];
+  const badge = document.getElementById('validate-badge');
+  if (refs.length > 0) {
+    badge.textContent = refs.length;
+    badge.style.display = 'inline';
+  } else {
+    badge.style.display = 'none';
+  }
+}
+
+function renderValidate() {
+  const toConfirm = JSON.parse(localStorage.getItem('fmc_to_confirm') || '[]');
+  const container = document.getElementById('validate-content');
+  const bulkEl = document.getElementById('validate-bulk-actions');
+  updateValidateBadge();
+
+  if (!toConfirm.length) {
+    container.innerHTML = '<div class="card"><div class="empty">Aucune confirmation en attente.</div></div>';
+    bulkEl.innerHTML = '';
+    return;
+  }
+
+  const byOrder = {};
+  toConfirm.forEach(d => {
+    if (!byOrder[d.orderRef]) byOrder[d.orderRef] = [];
+    byOrder[d.orderRef].push(d);
+  });
+  const orderRefs = Object.keys(byOrder);
+
+  bulkEl.innerHTML = `
+    <button class="btn btn-sm" onclick="ignoreAll()">Ignorer tout</button>
+    <button class="btn btn-sm btn-primary" onclick="confirmAll()">Confirmer tout</button>`;
+
+  container.innerHTML = orderRefs.map(ref => {
+    const items = byOrder[ref];
+    const total = items.reduce((a, d) => a + d.allocated, 0);
+    const rows = items.map(d => `<tr>
+      <td><div class="prod-name">${d.name}</div></td>
+      <td>${d.variant || '—'}</td>
+      <td>${d.size}</td>
+      <td><span class="badge badge-green">${d.allocated} unité${d.allocated > 1 ? 's' : ''}</span></td>
+    </tr>`).join('');
+    return `<div class="validate-card">
+      <div class="validate-card-header">
+        <span class="validate-order-ref">${ref}</span>
+        <div class="validate-actions">
+          <button class="btn btn-sm" onclick="ignoreOrder('${ref}')">Ignorer</button>
+          <button class="btn btn-sm btn-primary" onclick="confirmOrder('${ref}')">Confirmer — ${total} du stock</button>
+        </div>
+      </div>
+      <table>
+        <thead><tr><th>Produit</th><th>Couleur</th><th>Taille</th><th>Qté stock utilisée</th></tr></thead>
+        <tbody>${rows}</tbody>
+      </table>
+    </div>`;
+  }).join('');
+}
+
+function ignoreOrder(orderRef) {
+  const toConfirm = JSON.parse(localStorage.getItem('fmc_to_confirm') || '[]');
+  localStorage.setItem('fmc_to_confirm', JSON.stringify(toConfirm.filter(d => d.orderRef !== orderRef)));
+  renderValidate();
+}
+
+function ignoreAll() {
+  localStorage.setItem('fmc_to_confirm', '[]');
+  renderValidate();
+}
+
+async function confirmOrder(orderRef) {
+  const toConfirm = JSON.parse(localStorage.getItem('fmc_to_confirm') || '[]');
+  const items = toConfirm.filter(d => d.orderRef === orderRef);
+  await commitItems(items);
+  localStorage.setItem('fmc_to_confirm', JSON.stringify(toConfirm.filter(d => d.orderRef !== orderRef)));
+  renderValidate();
+  await loadSurplus();
+}
+
+async function confirmAll() {
+  const toConfirm = JSON.parse(localStorage.getItem('fmc_to_confirm') || '[]');
+  await commitItems(toConfirm);
+  localStorage.setItem('fmc_to_confirm', '[]');
+  renderValidate();
+  await loadSurplus();
+}
+
+async function commitItems(items) {
   const deductionMap = {};
-  checked.forEach(cb => {
-    const id = parseInt(cb.dataset.surplusId);
-    deductionMap[id] = (deductionMap[id] || 0) + parseInt(cb.dataset.deducted);
+  items.forEach(d => {
+    deductionMap[d.surplusId] = (deductionMap[d.surplusId] || 0) + d.allocated;
   });
   const deductions = Object.entries(deductionMap).map(([id, used]) => ({ id: parseInt(id), used }));
-  const btn = document.getElementById('commit-btn');
-  btn.disabled = true;
-  btn.textContent = '…';
   await fetch('/api/surplus/commit', {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
     body: JSON.stringify({ deductions })
   });
-  const total = deductions.reduce((a, d) => a + d.used, 0);
-  const alertEl = document.getElementById('prod-alert');
-  alertEl.innerHTML = `<div class="alert alert-green">✓ ${total} article${total > 1 ? 's' : ''} déduit${total > 1 ? 's' : ''} définitivement du stock surplus.</div>`;
-  setTimeout(() => alertEl.innerHTML = '', 5000);
-  await loadSurplus();
-  await loadOrders();
 }
 
 async function updateSurplusQty(id, delta) {
@@ -282,6 +379,7 @@ function showSection(name, el) {
   document.getElementById('section-' + name).classList.add('active');
   el.classList.add('active');
   if (name === 'production') loadOrders();
+  if (name === 'validate') renderValidate();
 }
 
 async function shopifyQuery(query) {
@@ -322,6 +420,7 @@ function processOrders(orderEdges) {
   surplus.forEach(s => s.used = 0);
   const agg = {};
   const orderSet = new Set();
+
   for (const { node: order } of orderEdges) {
     let hasParisItem = false;
     for (const { node: item } of order.lineItems.edges) {
@@ -331,7 +430,7 @@ function processOrders(orderEdges) {
       const isParis = (lieu && lieu.toLowerCase() === 'paris') || (prod.tags || []).includes('print-paris');
       if (!isParis) continue;
       hasParisItem = true;
-      const options = item.variant && item.variant.selectedOptions ? item.variant.selectedOptions : [];
+      const options = item.variant?.selectedOptions || [];
       const sizeOpt = options.find(o => ['taille','size'].includes(o.name.toLowerCase()));
       const colorOpt = options.find(o => ['couleur','color','colour'].includes(o.name.toLowerCase()));
       const size = sizeOpt ? sizeOpt.value : 'Unique';
@@ -339,12 +438,15 @@ function processOrders(orderEdges) {
       const imageUrl = item.variant?.image?.url || item.product.images?.edges?.[0]?.node?.url || '';
       const typeImpression = item.product.typeImpression?.value || '';
       const key = item.title + '||' + variant + '||' + size;
-      if (!agg[key]) agg[key] = { name: item.title, variant, size, qty: 0, refs: [], imageUrl, typeImpression };
+      if (!agg[key]) agg[key] = { name: item.title, variant, size, qty: 0, orders: {}, imageUrl, typeImpression };
       agg[key].qty += item.quantity;
-      agg[key].refs.push(order.name);
+      agg[key].orders[order.name] = (agg[key].orders[order.name] || 0) + item.quantity;
     }
     if (hasParisItem) orderSet.add(order.name);
   }
+
+  // Calcul déductions surplus + allocation FIFO par commande
+  const newOrderAllocations = {};
   prodList = Object.values(agg).map(item => {
     const s = surplus.find(s =>
       item.name.toUpperCase().includes(s.sku.toUpperCase()) &&
@@ -353,12 +455,45 @@ function processOrders(orderEdges) {
     );
     const available = s ? Math.max(0, s.qty - (s.used || 0)) : 0;
     const deducted = Math.min(available, item.qty);
-    if (s && deducted > 0) s.used = (s.used || 0) + deducted;
-    return { ...item, deducted, toPrint: item.qty - deducted, surplusId: s ? s.id : null };
+    if (s && deducted > 0) {
+      s.used = (s.used || 0) + deducted;
+      let remaining = deducted;
+      for (const [ref, qty] of Object.entries(item.orders)) {
+        if (remaining <= 0) break;
+        const allocated = Math.min(qty, remaining);
+        if (!newOrderAllocations[ref]) newOrderAllocations[ref] = [];
+        newOrderAllocations[ref].push({ surplusId: s.id, name: item.name, variant: item.variant, size: item.size, allocated });
+        remaining -= allocated;
+      }
+    }
+    const refs = Object.keys(item.orders);
+    return { ...item, refs, deducted, toPrint: item.qty - deducted, surplusId: s ? s.id : null };
   });
+
+  // Détection des commandes expédiées (présentes avant, absentes maintenant)
+  const prevAllocations = JSON.parse(localStorage.getItem('fmc_order_allocations') || 'null');
+  pendingDeductions = [];
+  if (prevAllocations) {
+    const shippedRefs = Object.keys(prevAllocations).filter(ref => !orderSet.has(ref));
+    pendingDeductions = shippedRefs.flatMap(ref =>
+      (prevAllocations[ref] || []).map(a => ({ ...a, orderRef: ref }))
+    );
+  }
+
+  localStorage.setItem('fmc_order_allocations', JSON.stringify(newOrderAllocations));
+
+  // Fusionner les nouvelles confirmations sans écraser les existantes
+  if (pendingDeductions.length > 0) {
+    const existing = JSON.parse(localStorage.getItem('fmc_to_confirm') || '[]');
+    const existingRefs = new Set(existing.map(d => d.orderRef));
+    const merged = [...existing, ...pendingDeductions.filter(d => !existingRefs.has(d.orderRef))];
+    localStorage.setItem('fmc_to_confirm', JSON.stringify(merged));
+  }
+
   renderProdList(orderSet.size);
   renderCSV();
   renderSurplus();
+  updateValidateBadge();
 }
 
 function renderProdList(orderCount) {
@@ -369,7 +504,6 @@ function renderProdList(orderCount) {
   document.getElementById('m-items').textContent = toPrint;
   document.getElementById('m-deducted').textContent = deducted;
   document.getElementById('prod-count').textContent = prodList.filter(p => p.toPrint > 0).length + ' articles';
-  document.getElementById('commit-btn').style.display = 'none';
   if (!prodList.length) { document.getElementById('prod-content').innerHTML = '<div class="empty">Aucune commande en attente de production Paris.</div>'; return; }
 
   // Filter
@@ -395,7 +529,6 @@ function renderProdList(orderCount) {
     return (va - vb) * dir;
   });
 
-  const hasDeductions = deducted > 0;
   const prodCols = [
     { key: 'name', label: 'Produit' },
     { key: 'variant', label: 'Couleur' },
@@ -411,39 +544,20 @@ function renderProdList(orderCount) {
       const arrow = isActive ? (prodSort.dir === 'asc' ? '↑' : '↓') : '↕';
       return `<th class="th-sort${isActive ? ' sorted' : ''}" onclick="sortProd('${c.key}')">${c.label}<span class="sort-arrow">${arrow}</span></th>`;
     }).join('')}
-    ${hasDeductions ? `<th style="text-align:center;width:60px"><input type="checkbox" id="check-all" checked title="Tout cocher / décocher" onchange="toggleAllDeductions(this.checked)"></th>` : ''}
   </tr></thead>`;
 
-  const emptyMsg = filtered.length === 0 ? '<tr><td colspan="7"><div class="empty">Aucun article ne correspond aux filtres.</div></td></tr>' : '';
+  const emptyMsg = filtered.length === 0 ? '<tr><td colspan="6"><div class="empty">Aucun article ne correspond aux filtres.</div></td></tr>' : '';
   const rows = filtered.map(p => `<tr>
     <td><div class="prod-name">${p.name}</div><div class="prod-ref">${[...new Set(p.refs)].join(', ')}</div></td>
     <td>${p.variant || '—'}</td><td>${p.size}</td>
     <td style="color:var(--text-muted)">${p.qty}</td>
     <td><div class="qty-main">${p.toPrint > 0 ? p.toPrint : '<span style="color:var(--text-faint)">0</span>'}</div>${p.deducted > 0 ? `<div class="qty-note">− ${p.deducted} surplus</div>` : ''}</td>
     <td>${p.toPrint === 0 ? '<span class="badge badge-green">Couvert surplus</span>' : '<span class="badge badge-blue">À imprimer</span>'}</td>
-    ${hasDeductions ? `<td style="text-align:center">${p.deducted > 0 ? `<input type="checkbox" class="deduction-check" checked data-surplus-id="${p.surplusId}" data-deducted="${p.deducted}" onchange="updateCommitBtn()">` : ''}</td>` : ''}
   </tr>`).join('');
 
   document.getElementById('prod-content').innerHTML = `<table>${thead}<tbody>${emptyMsg}${rows}</tbody></table>`;
-  if (hasDeductions) updateCommitBtn();
 }
 
-function toggleAllDeductions(checked) {
-  document.querySelectorAll('.deduction-check').forEach(cb => cb.checked = checked);
-  updateCommitBtn();
-}
-
-function updateCommitBtn() {
-  const checked = [...document.querySelectorAll('.deduction-check:checked')];
-  const btn = document.getElementById('commit-btn');
-  const total = checked.reduce((a, cb) => a + parseInt(cb.dataset.deducted), 0);
-  btn.style.display = checked.length > 0 ? 'inline-flex' : 'none';
-  btn.disabled = false;
-  btn.textContent = `✓ Valider ${total} article${total > 1 ? 's' : ''} déduit${total > 1 ? 's' : ''}`;
-  const allCbs = document.querySelectorAll('.deduction-check');
-  const checkAll = document.getElementById('check-all');
-  if (checkAll) checkAll.checked = checked.length === allCbs.length;
-}
 
 async function loadSurplus() {
   const res = await fetch('/api/surplus');
@@ -591,6 +705,7 @@ function copyCSV() {
 
 loadSurplus();
 loadOrders();
+updateValidateBadge();
 </script>
 </body>
 </html>
