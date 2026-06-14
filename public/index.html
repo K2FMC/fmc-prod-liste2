@@ -179,16 +179,8 @@
       <div class="card">
         <div class="card-header"><span class="card-title">Ajouter un article en surplus</span></div>
         <div class="card-body">
-          <div class="form-grid" style="grid-template-columns:1fr 120px 120px 80px auto;align-items:end">
-           <div class="form-group"><label>SKU / Nom produit</label><input type="text" id="s-sku" placeholder="ex: Money Chasers" /></div>
-           <div class="form-group"><label>Couleur (optionnel)</label><input type="text" id="s-color" placeholder="ex: Blanc" /></div>
-           <div class="form-group"><label>Taille</label>
-             <select id="s-size"><option value="">— Taille —</option><option>XS</option><option>S</option><option>M</option><option>L</option><option>XL</option><option>XXL</option><option>Unique</option></select>
-           </div>
-           <div class="form-group"><label>Quantité</label><input type="number" id="s-qty" value="1" min="1" /></div>
-           <button class="btn btn-primary" onclick="addSurplus()">Ajouter</button>
-         </div>
-          <div id="surplus-err" style="font-size:12px;color:var(--red-text);display:none;margin-top:-6px"></div>
+          <input type="text" id="s-search" placeholder="Tapez le nom d'un produit…" style="width:100%;margin-bottom:12px" oninput="debouncedSurplusSearch()">
+          <div id="s-results"></div>
         </div>
       </div>
       <div class="card">
@@ -270,6 +262,8 @@ let manualItems = JSON.parse(localStorage.getItem('fmc_manual_items') || '[]');
 let lastOrderEdges = null;
 let ajSearchTimeout = null;
 let searchVariantCache = [];
+let surplusSearchTimeout = null;
+let surplusSearchCache = [];
 
 // =================== AJOUT MANUEL ===================
 
@@ -779,24 +773,99 @@ async function loadSurplus() {
   renderSurplus();
 }
 
-async function addSurplus() {
-  const sku = document.getElementById('s-sku').value.trim();
-  const color = document.getElementById('s-color').value.trim();
-  const size = document.getElementById('s-size').value;
-  const qty = parseInt(document.getElementById('s-qty').value);
-  const err = document.getElementById('surplus-err');
-  if (!sku || !size || !qty || qty < 1) { err.textContent = 'Remplis tous les champs.'; err.style.display = 'block'; return; }
-  err.style.display = 'none';
-  await fetch('/api/surplus', {
-    method: 'POST',
-    headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify({ sku, color, size, qty })
-  });
-  document.getElementById('s-sku').value = '';
-  document.getElementById('s-color').value = '';
-  document.getElementById('s-size').value = '';
-  document.getElementById('s-qty').value = '';
-  await loadSurplus();
+function debouncedSurplusSearch() {
+  clearTimeout(surplusSearchTimeout);
+  const val = document.getElementById('s-search').value.trim();
+  if (val.length < 2) { document.getElementById('s-results').innerHTML = ''; return; }
+  surplusSearchTimeout = setTimeout(() => searchSurplusProducts(val), 400);
+}
+
+async function searchSurplusProducts(term) {
+  const resultsEl = document.getElementById('s-results');
+  resultsEl.innerHTML = '<div class="loading"><div class="spinner"></div> Recherche en cours...</div>';
+  try {
+    const escaped = term.replace(/["'\\]/g, '').trim();
+    const data = await shopifyQuery(`{
+      products(first: 20, query: "${escaped}") {
+        edges { node {
+          id title
+          images(first: 1) { edges { node { url } } }
+          variants(first: 100) {
+            edges { node {
+              id sku
+              selectedOptions { name value }
+              image { url }
+            } }
+          }
+        } }
+      }
+    }`);
+    renderSurplusSearchResults(data.products.edges);
+  } catch(e) {
+    resultsEl.innerHTML = `<div class="alert alert-red">✗ ${e.message}</div>`;
+  }
+}
+
+function renderSurplusSearchResults(edges) {
+  const el = document.getElementById('s-results');
+  surplusSearchCache = [];
+  if (!edges.length) { el.innerHTML = '<div class="empty">Aucun produit trouvé.</div>'; return; }
+  el.innerHTML = edges.map(({ node: p }) => {
+    const productImage = p.images?.edges?.[0]?.node?.url || '';
+    const variantRows = p.variants.edges.map(({ node: v }) => {
+      const options = v.selectedOptions || [];
+      const sizeOpt = options.find(o => ['taille','size'].includes(o.name.toLowerCase()));
+      const colorOpt = options.find(o => ['couleur','color','colour'].includes(o.name.toLowerCase()));
+      const size = sizeOpt ? sizeOpt.value : 'Unique';
+      const color = colorOpt ? colorOpt.value : '';
+      const idx = surplusSearchCache.length;
+      surplusSearchCache.push({ name: p.title, variant: color, size });
+      const qtyId = 's-qty-' + idx;
+      return `<tr>
+        <td>${color || '<span style="color:var(--text-faint)">—</span>'}</td>
+        <td>${size}</td>
+        <td><input type="number" min="1" value="1" id="${qtyId}" style="width:60px;padding:4px 6px;font-size:12px"></td>
+        <td><button class="btn btn-sm btn-primary" onclick="addSurplusFromSearch(${idx}, '${qtyId}', this)">+ Ajouter</button></td>
+      </tr>`;
+    }).join('');
+    return `<div class="card" style="margin-bottom:8px">
+      <div class="card-header" style="gap:10px">
+        ${productImage ? `<img src="${productImage}" class="aj-result-img">` : ''}
+        <span class="card-title" style="flex:1">${p.title}</span>
+      </div>
+      <table>
+        <thead><tr><th>Couleur</th><th>Taille</th><th>Quantité</th><th></th></tr></thead>
+        <tbody>${variantRows}</tbody>
+      </table>
+    </div>`;
+  }).join('');
+}
+
+async function addSurplusFromSearch(idx, qtyId, btn) {
+  const data = surplusSearchCache[idx];
+  if (!data) return;
+  const qty = Math.max(1, parseInt(document.getElementById(qtyId).value) || 1);
+  btn.textContent = '✓ Ajouté';
+  btn.disabled = true;
+  btn.style.transition = 'none';
+  btn.style.background = '#2ecc71';
+  btn.style.borderColor = '#27ae60';
+  try {
+    await fetch('/api/surplus', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ sku: data.name, color: data.variant, size: data.size, qty })
+    });
+    await loadSurplus();
+  } catch(_) {}
+  setTimeout(() => {
+    btn.textContent = '+ Ajouter';
+    btn.disabled = false;
+    btn.style.transition = 'background 0.4s ease, border-color 0.4s ease';
+    btn.style.background = '';
+    btn.style.borderColor = '';
+    setTimeout(() => btn.style.transition = '', 400);
+  }, 1500);
 }
 async function removeSurplus(id) {
   await fetch(`/api/surplus/${id}`, { method: 'DELETE' });
