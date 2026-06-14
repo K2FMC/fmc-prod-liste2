@@ -356,7 +356,17 @@ function addManualItemFromSearch(idx, qtyId, btn) {
   const orig = btn.textContent;
   btn.textContent = '✓ Ajouté';
   btn.disabled = true;
-  setTimeout(() => { btn.textContent = orig; btn.disabled = false; }, 1500);
+  btn.style.transition = 'none';
+  btn.style.background = '#2ecc71';
+  btn.style.borderColor = '#27ae60';
+  setTimeout(() => {
+    btn.textContent = orig;
+    btn.disabled = false;
+    btn.style.transition = 'background 0.4s ease, border-color 0.4s ease';
+    btn.style.background = '';
+    btn.style.borderColor = '';
+    setTimeout(() => btn.style.transition = '', 400);
+  }, 1500);
 }
 
 function addManualItem(item) {
