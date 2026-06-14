@@ -93,6 +93,8 @@
   .validate-card-header { padding: 12px 16px; border-bottom: 1px solid var(--border); display: flex; align-items: center; justify-content: space-between; }
   .validate-order-ref { font-size: 13px; font-weight: 600; color: var(--text); }
   .validate-actions { display: flex; gap: 6px; }
+  .aj-result-img { width: 44px; height: 44px; object-fit: cover; border-radius: 6px; flex-shrink: 0; }
+  .manual-tag { display: inline-block; font-size: 10px; font-weight: 600; padding: 1px 5px; border-radius: 3px; background: var(--amber-bg); color: var(--amber-text); margin-left: 4px; vertical-align: middle; }
 </style>
 </head>
 <body>
@@ -119,6 +121,10 @@
       <div class="nav-item" onclick="showSection('export', this)">
         <svg class="nav-icon" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.5"><path d="M3 10v3h10v-3M8 2v8M5 7l3 3 3-3"/></svg>
         Export CSV
+      </div>
+      <div class="nav-item" onclick="showSection('ajout', this)">
+        <svg class="nav-icon" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.5"><circle cx="8" cy="8" r="6"/><path d="M8 5v6M5 8h6"/></svg>
+        Ajout manuel
       </div>
     </nav>
     <div class="sidebar-footer">
@@ -214,6 +220,31 @@
       </div>
     </div>
 
+    <!-- AJOUT MANUEL -->
+    <div id="section-ajout" class="section">
+      <div class="page-header">
+        <div class="page-title">Ajout manuel</div>
+        <div class="page-sub">Recherche un article dans le catalogue et ajoute-le directement à la liste de production</div>
+      </div>
+      <div class="card">
+        <div class="card-header"><span class="card-title">Rechercher un article</span></div>
+        <div class="card-body">
+          <input type="text" id="aj-search" placeholder="Tapez le nom d'un produit…" style="width:100%;margin-bottom:12px" oninput="debouncedSearch()">
+          <div id="aj-results"></div>
+        </div>
+      </div>
+      <div class="card" id="aj-manual-card" style="display:none">
+        <div class="card-header">
+          <span class="card-title">Articles ajoutés manuellement</span>
+          <div style="display:flex;gap:8px;align-items:center">
+            <span class="badge badge-amber" id="aj-manual-count">0 articles</span>
+            <button class="btn btn-sm btn-danger" onclick="clearAllManual()">Tout retirer</button>
+          </div>
+        </div>
+        <div id="aj-manual-list"></div>
+      </div>
+    </div>
+
     <!-- À VALIDER -->
     <div id="section-validate" class="section">
       <div class="page-header" style="display:flex;align-items:flex-start;justify-content:space-between">
@@ -235,6 +266,176 @@ let prodSort = { col: 'name', dir: 'asc' };
 let prodFilter = { search: '', size: '', status: '' };
 let lastOrderCount = 0;
 const SIZE_ORDER = ['XS', 'S', 'M', 'L', 'XL', 'XXL', 'Unique'];
+let manualItems = JSON.parse(localStorage.getItem('fmc_manual_items') || '[]');
+let lastOrderEdges = null;
+let ajSearchTimeout = null;
+let searchVariantCache = [];
+
+// =================== AJOUT MANUEL ===================
+
+function debouncedSearch() {
+  clearTimeout(ajSearchTimeout);
+  const val = document.getElementById('aj-search').value.trim();
+  if (val.length < 2) { document.getElementById('aj-results').innerHTML = ''; return; }
+  ajSearchTimeout = setTimeout(() => searchProducts(val), 400);
+}
+
+async function searchProducts(term) {
+  const resultsEl = document.getElementById('aj-results');
+  resultsEl.innerHTML = '<div class="loading"><div class="spinner"></div> Recherche en cours...</div>';
+  try {
+    const escaped = term.replace(/["'\\]/g, '').trim();
+    const data = await shopifyQuery(`{
+      products(first: 20, query: "${escaped}") {
+        edges { node {
+          id title tags
+          metafield(namespace: "custom", key: "production_lieu") { value }
+          typeImpression: metafield(namespace: "custom", key: "type_impression") { value }
+          images(first: 1) { edges { node { url } } }
+          variants(first: 100) {
+            edges { node {
+              id title sku
+              selectedOptions { name value }
+              image { url }
+            } }
+          }
+        } }
+      }
+    }`);
+    renderSearchResults(data.products.edges);
+  } catch(e) {
+    resultsEl.innerHTML = `<div class="alert alert-red">✗ ${e.message}</div>`;
+  }
+}
+
+function renderSearchResults(edges) {
+  const el = document.getElementById('aj-results');
+  searchVariantCache = [];
+  if (!edges.length) { el.innerHTML = '<div class="empty">Aucun produit trouvé.</div>'; return; }
+  el.innerHTML = edges.map(({ node: p }) => {
+    const isParis = (p.metafield && p.metafield.value.toLowerCase() === 'paris') || (p.tags || []).includes('print-paris');
+    const locationBadge = isParis ? '<span class="tag-paris">Paris</span>' : '<span class="tag-chine">Chine</span>';
+    const productImage = p.images?.edges?.[0]?.node?.url || '';
+    const typeImpression = p.typeImpression?.value || '';
+    const variantRows = p.variants.edges.map(({ node: v }) => {
+      const options = v.selectedOptions || [];
+      const sizeOpt = options.find(o => ['taille','size'].includes(o.name.toLowerCase()));
+      const colorOpt = options.find(o => ['couleur','color','colour'].includes(o.name.toLowerCase()));
+      const size = sizeOpt ? sizeOpt.value : 'Unique';
+      const color = colorOpt ? colorOpt.value : '';
+      const variantImg = v.image?.url || productImage;
+      const idx = searchVariantCache.length;
+      searchVariantCache.push({ name: p.title, variant: color, size, imageUrl: variantImg, typeImpression, sku: v.sku || '' });
+      const qtyId = 'aj-qty-' + idx;
+      return `<tr>
+        <td>${color || '<span style="color:var(--text-faint)">—</span>'}</td>
+        <td>${size}</td>
+        <td><input type="number" min="1" value="1" id="${qtyId}" style="width:60px;padding:4px 6px;font-size:12px"></td>
+        <td><button class="btn btn-sm btn-primary" onclick="addManualItemFromSearch(${idx}, '${qtyId}', this)">+ Ajouter</button></td>
+      </tr>`;
+    }).join('');
+    return `<div class="card" style="margin-bottom:8px">
+      <div class="card-header" style="gap:10px">
+        ${productImage ? `<img src="${productImage}" class="aj-result-img">` : ''}
+        <span class="card-title" style="flex:1">${p.title}</span>
+        ${locationBadge}
+      </div>
+      <table>
+        <thead><tr><th>Couleur</th><th>Taille</th><th>Quantité</th><th></th></tr></thead>
+        <tbody>${variantRows}</tbody>
+      </table>
+    </div>`;
+  }).join('');
+}
+
+function addManualItemFromSearch(idx, qtyId, btn) {
+  const data = searchVariantCache[idx];
+  if (!data) return;
+  const qty = Math.max(1, parseInt(document.getElementById(qtyId).value) || 1);
+  addManualItem({ ...data, qty, id: Date.now() });
+  const orig = btn.textContent;
+  btn.textContent = '✓ Ajouté';
+  btn.disabled = true;
+  setTimeout(() => { btn.textContent = orig; btn.disabled = false; }, 1500);
+}
+
+function addManualItem(item) {
+  manualItems.push(item);
+  localStorage.setItem('fmc_manual_items', JSON.stringify(manualItems));
+  renderManualList();
+  refreshProdList();
+}
+
+function removeManualItem(id) {
+  manualItems = manualItems.filter(mi => mi.id != id);
+  localStorage.setItem('fmc_manual_items', JSON.stringify(manualItems));
+  renderManualList();
+  refreshProdList();
+}
+
+function clearAllManual() {
+  if (!confirm('Retirer tous les articles ajoutés manuellement ?')) return;
+  manualItems = [];
+  localStorage.setItem('fmc_manual_items', '[]');
+  renderManualList();
+  refreshProdList();
+}
+
+function renderManualList() {
+  const card = document.getElementById('aj-manual-card');
+  if (!card) return;
+  const list = document.getElementById('aj-manual-list');
+  const countEl = document.getElementById('aj-manual-count');
+  if (!manualItems.length) { card.style.display = 'none'; return; }
+  card.style.display = 'block';
+  countEl.textContent = manualItems.length + ' article' + (manualItems.length > 1 ? 's' : '');
+  const rows = manualItems.map(mi => `<tr>
+    <td><div class="prod-name">${mi.name}</div></td>
+    <td>${mi.variant || '—'}</td>
+    <td>${mi.size}</td>
+    <td>${mi.qty}</td>
+    <td><button class="btn btn-sm btn-danger" onclick="removeManualItem(${mi.id})">Retirer</button></td>
+  </tr>`).join('');
+  list.innerHTML = `<table>
+    <thead><tr><th>Produit</th><th>Couleur</th><th>Taille</th><th>Qté</th><th></th></tr></thead>
+    <tbody>${rows}</tbody>
+  </table>`;
+}
+
+function injectManualItems() {
+  manualItems.forEach(mi => {
+    const s = surplus.find(s =>
+      mi.name.toUpperCase().includes(s.sku.toUpperCase()) &&
+      s.size === mi.size &&
+      (!s.color || s.color === '' || s.color.toUpperCase() === (mi.variant || '').toUpperCase())
+    );
+    const available = s ? Math.max(0, s.qty - (s.used || 0)) : 0;
+    const deducted = Math.min(available, mi.qty);
+    if (s && deducted > 0) s.used = (s.used || 0) + deducted;
+    prodList.push({
+      name: mi.name, variant: mi.variant || '', size: mi.size,
+      qty: mi.qty, toPrint: mi.qty - deducted, deducted,
+      refs: ['Ajout manuel'], orders: { 'Ajout manuel': mi.qty },
+      imageUrl: mi.imageUrl || '', typeImpression: mi.typeImpression || '',
+      isManual: true, manualId: mi.id,
+      surplusId: s ? s.id : null
+    });
+  });
+}
+
+function refreshProdList() {
+  if (lastOrderEdges !== null) {
+    processOrders(lastOrderEdges);
+  } else {
+    surplus.forEach(s => s.used = 0);
+    prodList = [];
+    injectManualItems();
+    renderProdList(lastOrderCount);
+    renderCSV();
+  }
+}
+
+// =================== FIN AJOUT MANUEL ===================
 
 function sortProd(col) {
   if (prodSort.col === col) {
@@ -380,6 +581,7 @@ function showSection(name, el) {
   el.classList.add('active');
   if (name === 'production') loadOrders();
   if (name === 'validate') renderValidate();
+  if (name === 'ajout') renderManualList();
 }
 
 async function shopifyQuery(query) {
@@ -417,6 +619,7 @@ async function loadOrders() {
 }
 
 function processOrders(orderEdges) {
+  lastOrderEdges = orderEdges;
   surplus.forEach(s => s.used = 0);
   const agg = {};
   const orderSet = new Set();
@@ -490,6 +693,7 @@ function processOrders(orderEdges) {
     localStorage.setItem('fmc_to_confirm', JSON.stringify(merged));
   }
 
+  injectManualItems();
   renderProdList(orderSet.size);
   renderCSV();
   renderSurplus();
@@ -548,7 +752,7 @@ function renderProdList(orderCount) {
 
   const emptyMsg = filtered.length === 0 ? '<tr><td colspan="6"><div class="empty">Aucun article ne correspond aux filtres.</div></td></tr>' : '';
   const rows = filtered.map(p => `<tr>
-    <td><div class="prod-name">${p.name}</div><div class="prod-ref">${[...new Set(p.refs)].join(', ')}</div></td>
+    <td><div class="prod-name">${p.name}</div><div class="prod-ref">${[...new Set(p.refs)].join(', ')}${p.isManual ? ' <span class="manual-tag">Manuel</span>' : ''}</div></td>
     <td>${p.variant || '—'}</td><td>${p.size}</td>
     <td style="color:var(--text-muted)">${p.qty}</td>
     <td><div class="qty-main">${p.toPrint > 0 ? p.toPrint : '<span style="color:var(--text-faint)">0</span>'}</div>${p.deducted > 0 ? `<div class="qty-note">− ${p.deducted} surplus</div>` : ''}</td>
@@ -706,6 +910,7 @@ function copyCSV() {
 loadSurplus();
 loadOrders();
 updateValidateBadge();
+renderManualList();
 </script>
 </body>
 </html>
