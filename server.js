@@ -111,7 +111,9 @@ app.patch('/api/surplus/:id', async (req, res) => {
       [delta, req.params.id]
     );
     if (!result.rows.length) return res.status(404).json({ error: 'Non trouvé' });
-    res.json(result.rows[0]);
+    const row = result.rows[0];
+    if (row.qty === 0) await pool.query('DELETE FROM surplus WHERE id = $1', [req.params.id]);
+    res.json(row);
   } catch(e) {
     res.status(500).json({ error: e.message });
   }
@@ -123,10 +125,13 @@ app.post('/api/surplus/commit', async (req, res) => {
   try {
     for (const { id, used } of deductions) {
       if (used > 0) {
-        await pool.query(
-          'UPDATE surplus SET qty = GREATEST(0, qty - $1) WHERE id = $2',
+        const result = await pool.query(
+          'UPDATE surplus SET qty = GREATEST(0, qty - $1) WHERE id = $2 RETURNING qty',
           [used, id]
         );
+        if (result.rows.length && result.rows[0].qty === 0) {
+          await pool.query('DELETE FROM surplus WHERE id = $1', [id]);
+        }
       }
     }
     res.json({ success: true });
