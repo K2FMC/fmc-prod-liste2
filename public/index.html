@@ -258,7 +258,7 @@ let prodSort = { col: 'name', dir: 'asc' };
 let prodFilter = { search: '', size: '', status: '' };
 let lastOrderCount = 0;
 const SIZE_ORDER = ['XS', 'S', 'M', 'L', 'XL', 'XXL', 'Unique'];
-let manualItems = JSON.parse(localStorage.getItem('fmc_manual_items') || '[]');
+let manualItems = [];
 let lastOrderEdges = null;
 let ajSearchTimeout = null;
 let searchVariantCache = [];
@@ -363,24 +363,36 @@ function addManualItemFromSearch(idx, qtyId, btn) {
   }, 1500);
 }
 
-function addManualItem(item) {
-  manualItems.push(item);
-  localStorage.setItem('fmc_manual_items', JSON.stringify(manualItems));
+async function loadManualItems() {
+  const res = await fetch('/api/manual');
+  manualItems = await res.json();
   renderManualList();
   refreshProdList();
 }
 
-function removeManualItem(id) {
+async function addManualItem(item) {
+  const res = await fetch('/api/manual', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ name: item.name, variant: item.variant, size: item.size, qty: item.qty, imageUrl: item.imageUrl, typeImpression: item.typeImpression })
+  });
+  const saved = await res.json();
+  manualItems.push(saved);
+  renderManualList();
+  refreshProdList();
+}
+
+async function removeManualItem(id) {
+  await fetch(`/api/manual/${id}`, { method: 'DELETE' });
   manualItems = manualItems.filter(mi => mi.id != id);
-  localStorage.setItem('fmc_manual_items', JSON.stringify(manualItems));
   renderManualList();
   refreshProdList();
 }
 
-function clearAllManual() {
+async function clearAllManual() {
   if (!confirm('Retirer tous les articles ajoutés manuellement ?')) return;
+  await fetch('/api/manual', { method: 'DELETE' });
   manualItems = [];
-  localStorage.setItem('fmc_manual_items', '[]');
   renderManualList();
   refreshProdList();
 }
@@ -989,7 +1001,7 @@ function copyCSV() {
 loadSurplus();
 loadOrders();
 updateValidateBadge();
-renderManualList();
+loadManualItems();
 </script>
 </body>
 </html>

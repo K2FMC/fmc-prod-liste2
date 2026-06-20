@@ -49,6 +49,18 @@ async function initDB() {
     )
   `);
   await pool.query(`ALTER TABLE surplus ADD COLUMN IF NOT EXISTS color TEXT DEFAULT ''`);
+  await pool.query(`
+    CREATE TABLE IF NOT EXISTS manual_items (
+      id SERIAL PRIMARY KEY,
+      name TEXT NOT NULL,
+      variant TEXT DEFAULT '',
+      size TEXT NOT NULL,
+      qty INTEGER NOT NULL DEFAULT 1,
+      image_url TEXT DEFAULT '',
+      type_impression TEXT DEFAULT '',
+      created_at TIMESTAMP DEFAULT NOW()
+    )
+  `);
   console.log('Base de données prête.');
 }
 
@@ -144,6 +156,53 @@ app.post('/api/surplus/commit', async (req, res) => {
 app.delete('/api/surplus/:id', async (req, res) => {
   try {
     await pool.query('DELETE FROM surplus WHERE id = $1', [req.params.id]);
+    res.json({ success: true });
+  } catch(e) {
+    res.status(500).json({ error: e.message });
+  }
+});
+
+// GET manual items
+app.get('/api/manual', async (_req, res) => {
+  try {
+    const result = await pool.query(
+      `SELECT id, name, variant, size, qty, image_url AS "imageUrl", type_impression AS "typeImpression" FROM manual_items ORDER BY created_at`
+    );
+    res.json(result.rows);
+  } catch(e) {
+    res.status(500).json({ error: e.message });
+  }
+});
+
+// POST manual item
+app.post('/api/manual', async (req, res) => {
+  const { name, variant = '', size, qty, imageUrl = '', typeImpression = '' } = req.body;
+  try {
+    const result = await pool.query(
+      `INSERT INTO manual_items (name, variant, size, qty, image_url, type_impression) VALUES ($1, $2, $3, $4, $5, $6)
+       RETURNING id, name, variant, size, qty, image_url AS "imageUrl", type_impression AS "typeImpression"`,
+      [name, variant, size, qty, imageUrl, typeImpression]
+    );
+    res.json(result.rows[0]);
+  } catch(e) {
+    res.status(500).json({ error: e.message });
+  }
+});
+
+// DELETE all manual items
+app.delete('/api/manual', async (_req, res) => {
+  try {
+    await pool.query('DELETE FROM manual_items');
+    res.json({ success: true });
+  } catch(e) {
+    res.status(500).json({ error: e.message });
+  }
+});
+
+// DELETE single manual item
+app.delete('/api/manual/:id', async (req, res) => {
+  try {
+    await pool.query('DELETE FROM manual_items WHERE id = $1', [req.params.id]);
     res.json({ success: true });
   } catch(e) {
     res.status(500).json({ error: e.message });
