@@ -4,6 +4,7 @@ const cors = require('cors');
 const path = require('path');
 const { Pool } = require('pg');
 const ExcelJS = require('exceljs');
+const admin = require('firebase-admin');
 const { getImageDimensions } = require('./lib/imageUtils');
 
 const app = express();
@@ -20,8 +21,29 @@ const STORE = process.env.SHOPIFY_STORE;
 const CLIENT_ID = process.env.SHOPIFY_CLIENT_ID;
 const CLIENT_SECRET = process.env.SHOPIFY_CLIENT_SECRET;
 
+const PRINTTEX_BRAND_ID = process.env.PRINTTEX_BRAND_ID;
+
 let cachedToken = null;
 let tokenExpiry = 0;
+
+// Firestore du projet Printtex — accès admin (bypass des règles de sécurité client)
+let printtexDb = null;
+function getPrinttexDb() {
+  if (printtexDb) return printtexDb;
+  const raw = process.env.FIREBASE_SERVICE_ACCOUNT_JSON;
+  if (!raw) throw new Error('FIREBASE_SERVICE_ACCOUNT_JSON manquant');
+  let serviceAccount;
+  try {
+    serviceAccount = JSON.parse(raw);
+  } catch (_) {
+    serviceAccount = JSON.parse(Buffer.from(raw, 'base64').toString('utf8'));
+  }
+  const app = admin.apps.length
+    ? admin.app()
+    : admin.initializeApp({ credential: admin.credential.cert(serviceAccount) });
+  printtexDb = app.firestore();
+  return printtexDb;
+}
 
 async function getShopifyToken() {
   if (cachedToken && Date.now() < tokenExpiry - 60000) return cachedToken;
@@ -296,6 +318,43 @@ app.post('/api/export', async (req, res) => {
     await workbook.xlsx.write(res);
     res.end();
   } catch(e) {
+    res.status(500).json({ error: e.message });
+  }
+});
+
+// POST /api/push-to-printtex — pousse la liste de production vers le portail marque Printtex (Firestore)
+app.post('/api/push-to-printtex', async (req, res) => {
+  const { items } = req.body;
+  if (!PRINTTEX_BRAND_ID) return res.status(500).json({ error: 'PRINTTEX_BRAND_ID non configuré' });
+  if (!Array.isArray(items) || !items.length) return res.status(400).json({ error: 'Aucun article à envoyer' });
+  try {
+    const db = getPrinttexDb();
+    const tasksRef = db.collection('brands').doc(PRINTTEX_BRAND_ID).collection('tasks');
+    const batch = db.batch();
+    const now = new Date().toISOString();
+
+    items.forEach((item, i) => {
+      const id = `task_${Date.now()}_${i}_${Math.random().toString(36).slice(2, 7)}`;
+      batch.set(tasksRef.doc(id), {
+        id,
+        nom: item.name,
+        blank: '',
+        blankOther: '',
+        taille: item.size || '',
+        couleur: item.variant || '',
+        impression: item.typeImpression || '',
+        quantity: item.toPrint,
+        remarque: '',
+        mockup: item.imageUrl ? [{ name: item.name, url: item.imageUrl }] : [],
+        done: false,
+        readyQty: 0,
+        createdAt: now,
+      });
+    });
+
+    await batch.commit();
+    res.json({ success: true, count: items.length });
+  } catch (e) {
     res.status(500).json({ error: e.message });
   }
 });

@@ -205,8 +205,11 @@
           <div class="actions">
             <button class="btn btn-primary" onclick="downloadXLSX()" id="xlsx-btn">↓ Télécharger XLSX</button>
             <button class="btn" onclick="copyCSV()">Copier CSV</button>
+            <button class="btn" onclick="pushToPrinttex()" id="printtex-btn">⇪ Envoyer à Printtex</button>
             <span id="copy-ok" style="font-size:12px;color:var(--green-text);align-self:center;display:none">✓ Copié</span>
             <span id="xlsx-err" style="font-size:12px;color:var(--red-text);align-self:center;display:none"></span>
+            <span id="printtex-ok" style="font-size:12px;color:var(--green-text);align-self:center;display:none">✓ Envoyé</span>
+            <span id="printtex-err" style="font-size:12px;color:var(--red-text);align-self:center;display:none"></span>
           </div>
         </div>
       </div>
@@ -987,6 +990,36 @@ async function downloadXLSX() {
   } finally {
     btn.disabled = false;
     btn.textContent = '↓ Télécharger XLSX';
+  }
+}
+
+async function pushToPrinttex() {
+  const btn = document.getElementById('printtex-btn');
+  const okEl = document.getElementById('printtex-ok');
+  const errEl = document.getElementById('printtex-err');
+  okEl.style.display = 'none';
+  errEl.style.display = 'none';
+  const items = prodList.filter(p => p.toPrint > 0).sort((a, b) => a.name.localeCompare(b.name, 'fr'));
+  if (!items.length) { errEl.textContent = 'Aucun article à envoyer.'; errEl.style.display = 'inline'; return; }
+  btn.disabled = true;
+  btn.textContent = '…';
+  try {
+    const res = await fetch('/api/push-to-printtex', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ items })
+    });
+    const data = await res.json();
+    if (!res.ok) throw new Error(data.error || 'Échec de l\'envoi');
+    okEl.textContent = `✓ ${data.count} article${data.count > 1 ? 's' : ''} envoyé${data.count > 1 ? 's' : ''}`;
+    okEl.style.display = 'inline';
+    setTimeout(() => okEl.style.display = 'none', 3000);
+  } catch (e) {
+    errEl.textContent = '✗ ' + e.message;
+    errEl.style.display = 'inline';
+  } finally {
+    btn.disabled = false;
+    btn.textContent = '⇪ Envoyer à Printtex';
   }
 }
 
