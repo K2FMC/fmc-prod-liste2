@@ -355,7 +355,8 @@ app.post('/api/push-to-printtex', async (req, res) => {
     await batch.commit();
     res.json({ success: true, count: items.length });
   } catch (e) {
-    res.status(500).json({ error: e.message });
+    console.error('push-to-printtex error:', e);
+    res.status(500).json({ error: e.message, stack: e.stack });
   }
 });
 

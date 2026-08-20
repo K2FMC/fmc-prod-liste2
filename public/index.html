@@ -1010,7 +1010,7 @@ async function pushToPrinttex() {
       body: JSON.stringify({ items })
     });
     const data = await res.json();
-    if (!res.ok) throw new Error(data.error || 'Échec de l\'envoi');
+    if (!res.ok) { console.error('push-to-printtex:', data); throw new Error(data.error || 'Échec de l\'envoi'); }
     okEl.textContent = `✓ ${data.count} article${data.count > 1 ? 's' : ''} envoyé${data.count > 1 ? 's' : ''}`;
     okEl.style.display = 'inline';
     setTimeout(() => okEl.style.display = 'none', 3000);
