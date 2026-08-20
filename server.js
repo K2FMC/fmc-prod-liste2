@@ -4,7 +4,8 @@ const cors = require('cors');
 const path = require('path');
 const { Pool } = require('pg');
 const ExcelJS = require('exceljs');
-const admin = require('firebase-admin');
+const { initializeApp: initFirebaseApp, cert, getApps, getApp } = require('firebase-admin/app');
+const { getFirestore } = require('firebase-admin/firestore');
 const { getImageDimensions } = require('./lib/imageUtils');
 
 const app = express();
@@ -38,10 +39,8 @@ function getPrinttexDb() {
   } catch (_) {
     serviceAccount = JSON.parse(Buffer.from(raw, 'base64').toString('utf8'));
   }
-  const app = admin.apps.length
-    ? admin.app()
-    : admin.initializeApp({ credential: admin.credential.cert(serviceAccount) });
-  printtexDb = app.firestore();
+  const app = getApps().length ? getApp() : initFirebaseApp({ credential: cert(serviceAccount) });
+  printtexDb = getFirestore(app);
   return printtexDb;
 }
 
