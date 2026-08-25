@@ -352,6 +352,23 @@ app.post('/api/push-to-printtex', async (req, res) => {
     });
 
     await batch.commit();
+
+    // Recalcule le résumé de la marque (taskTotal/taskDone/oldestPendingDate),
+    // sinon la fiche marque dans la grille "Marques" reste bloquée sur son
+    // ancien compte et ne signale pas la nouvelle commande en attente —
+    // ce recalcul n'est normalement déclenché que par des actions dans l'UI.
+    const allTasksSnap = await tasksRef.get();
+    const allTasks = allTasksSnap.docs.map(d => d.data());
+    const pending = allTasks.filter(t => !t.done && t.createdAt);
+    const oldestPendingDate = pending.length
+      ? pending.reduce((min, t) => (t.createdAt < min ? t.createdAt : min), pending[0].createdAt)
+      : null;
+    await db.collection('brands').doc(PRINTTEX_BRAND_ID).update({
+      taskTotal: allTasks.length,
+      taskDone: allTasks.filter(t => t.done).length,
+      oldestPendingDate,
+    });
+
     res.json({ success: true, count: items.length });
   } catch (e) {
     console.error('push-to-printtex error:', e);
