@@ -1011,7 +1011,7 @@ async function pushToPrinttex() {
     });
     const data = await res.json();
     if (!res.ok) { console.error('push-to-printtex:', data); throw new Error(data.error || 'Échec de l\'envoi'); }
-    okEl.textContent = `✓ Commande #${String(data.orderNumber).padStart(4,'0')} créée (${data.totalQuantity} pièces)`;
+    okEl.textContent = `✓ ${data.count} article${data.count > 1 ? 's' : ''} envoyé${data.count > 1 ? 's' : ''}`;
     okEl.style.display = 'inline';
     setTimeout(() => okEl.style.display = 'none', 3000);
   } catch (e) {
