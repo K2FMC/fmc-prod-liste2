@@ -22,7 +22,11 @@ const STORE = process.env.SHOPIFY_STORE;
 const CLIENT_ID = process.env.SHOPIFY_CLIENT_ID;
 const CLIENT_SECRET = process.env.SHOPIFY_CLIENT_SECRET;
 
-const PRINTTEX_BRAND_ID = process.env.PRINTTEX_BRAND_ID;
+const PRINTTEX_CLIENT_NAME = process.env.PRINTTEX_CLIENT_NAME || 'FMC BETTER';
+// Tailles reconnues par le formulaire de commande Printtex (index.html: TASK_SIZES)
+const PRINTTEX_SIZES = ['XS', 'S', 'M', 'L', 'XL', 'XXL', '3XL'];
+// Emplacements visuels attendus par item (index.html: SLOTS) — l'UI plante si absents
+const PRINTTEX_EMPTY_SLOTS = { face: null, dos: null, mancheGauche: null, mancheDroite: null, etiquette: null, mockup1: null, mockup2: null };
 
 let cachedToken = null;
 let tokenExpiry = 0;
@@ -321,38 +325,72 @@ app.post('/api/export', async (req, res) => {
   }
 });
 
-// POST /api/push-to-printtex — pousse la liste de production vers le portail marque Printtex (Firestore)
+// POST /api/push-to-printtex — crée une commande dans le Kanban "Commandes" de Printtex (Firestore)
 app.post('/api/push-to-printtex', async (req, res) => {
   const { items } = req.body;
-  if (!PRINTTEX_BRAND_ID) return res.status(500).json({ error: 'PRINTTEX_BRAND_ID non configuré' });
   if (!Array.isArray(items) || !items.length) return res.status(400).json({ error: 'Aucun article à envoyer' });
   try {
     const db = getPrinttexDb();
-    const tasksRef = db.collection('brands').doc(PRINTTEX_BRAND_ID).collection('tasks');
-    const batch = db.batch();
-    const now = new Date().toISOString();
+    const ordersRef = db.collection('orders');
 
-    items.forEach((item, i) => {
-      const id = `task_${Date.now()}_${i}_${Math.random().toString(36).slice(2, 7)}`;
-      batch.set(tasksRef.doc(id), {
-        id,
-        nom: item.name,
-        blank: '',
-        blankOther: '',
-        taille: item.size || '',
-        couleur: item.variant || '',
-        impression: item.typeImpression || '',
-        quantity: item.toPrint,
-        remarque: '',
-        mockup: item.imageUrl ? [{ name: item.name, url: item.imageUrl }] : [],
-        done: false,
-        readyQty: 0,
-        createdAt: now,
-      });
-    });
+    // Regrouper par (nom, couleur) — un item de commande = un produit/couleur avec une répartition de tailles
+    const groups = {};
+    for (const it of items) {
+      const key = it.name + '||' + (it.variant || '');
+      if (!groups[key]) {
+        groups[key] = {
+          id: 'item_' + Date.now() + '_' + Math.random().toString(36).slice(2, 7),
+          product: 'Autre',
+          productOther: it.name,
+          blank: '',
+          blankOther: '',
+          sizes: Object.fromEntries(PRINTTEX_SIZES.map(s => [s, 0])),
+          couleur: it.variant || '',
+          impression: it.typeImpression || '',
+          quantity: 0,
+          slots: { ...PRINTTEX_EMPTY_SLOTS },
+          imageUrl: it.imageUrl || '',
+        };
+      }
+      const g = groups[key];
+      const size = PRINTTEX_SIZES.includes(it.size) ? it.size : 'M';
+      g.sizes[size] += it.toPrint;
+      g.quantity += it.toPrint;
+    }
+    const orderItems = Object.values(groups).map(({ imageUrl, ...item }) => item);
+    const totalQuantity = orderItems.reduce((sum, it) => sum + it.quantity, 0);
+    const thumbnails = Object.values(groups).map(g => g.imageUrl).filter(Boolean).slice(0, 3);
 
-    await batch.commit();
-    res.json({ success: true, count: items.length });
+    const snap = await ordersRef.get();
+    const orderNumber = snap.docs.reduce((max, d) => Math.max(max, d.data().orderNumber || 0), 0) + 1;
+    const id = 'ord_' + Date.now() + '_' + Math.random().toString(36).slice(2, 7);
+
+    const order = {
+      id, orderNumber,
+      clientName: PRINTTEX_CLIENT_NAME,
+      clientContact: '',
+      items: orderItems,
+      quantity: totalQuantity,
+      product: orderItems.length === 1 ? orderItems[0].product : `${orderItems.length} produits`,
+      productOther: orderItems.length === 1 ? orderItems[0].productOther : '',
+      printMethod: orderItems.length === 1 ? orderItems[0].impression : 'Divers',
+      deadline: '',
+      prodTime: '',
+      prodTimeUnit: 'jours',
+      status: 'nouvelle',
+      priority: 'normale',
+      priceAmount: '',
+      depositAmount: '',
+      toCheckOnReceipt: false,
+      notes: 'Envoyé automatiquement depuis fmc-prod-liste',
+      thumbnails,
+      imageCount: thumbnails.length,
+      archived: false,
+      createdAt: new Date().toISOString(),
+    };
+
+    await ordersRef.doc(id).set(order);
+    res.json({ success: true, orderNumber, itemCount: orderItems.length, totalQuantity });
   } catch (e) {
     console.error('push-to-printtex error:', e);
     res.status(500).json({ error: e.message, stack: e.stack });
