@@ -613,6 +613,7 @@ function showSection(name, el) {
   if (name === 'production') loadOrders();
   if (name === 'validate') renderValidate();
   if (name === 'ajout') renderManualList();
+  if (name === 'export') { renderCSV(); loadPrinttexQueue(); }
 }
 
 async function shopifyQuery(query) {
