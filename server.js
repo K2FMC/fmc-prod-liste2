@@ -82,6 +82,18 @@ async function initDB() {
       created_at TIMESTAMP DEFAULT NOW()
     )
   `);
+  // Journal des envois vers Printtex — permet de savoir ce qui a déjà été
+  // poussé (date, contenu) et d'afficher la date du dernier envoi dans l'UI.
+  await pool.query(`
+    CREATE TABLE IF NOT EXISTS printtex_pushes (
+      id SERIAL PRIMARY KEY,
+      pushed_at TIMESTAMP DEFAULT NOW(),
+      firestore_created_at TEXT,
+      item_count INTEGER NOT NULL DEFAULT 0,
+      total_qty INTEGER NOT NULL DEFAULT 0,
+      items JSONB NOT NULL DEFAULT '[]'
+    )
+  `);
   console.log('Base de données prête.');
 }
 
@@ -369,10 +381,70 @@ app.post('/api/push-to-printtex', async (req, res) => {
       oldestPendingDate,
     });
 
+    // Journalise l'envoi (best-effort — un échec ici ne doit pas faire
+    // échouer la requête, les tâches sont déjà écrites côté Printtex).
+    try {
+      const totalQty = items.reduce((a, it) => a + (Number(it.toPrint) || 0), 0);
+      await pool.query(
+        `INSERT INTO printtex_pushes (firestore_created_at, item_count, total_qty, items) VALUES ($1, $2, $3, $4)`,
+        [now, items.length, totalQty, JSON.stringify(items.map(it => ({
+          name: it.name, variant: it.variant || '', size: it.size || '',
+          typeImpression: it.typeImpression || '', toPrint: Number(it.toPrint) || 0,
+        })))]
+      );
+    } catch (logErr) {
+      console.error('printtex_pushes log error:', logErr.message);
+    }
+
     res.json({ success: true, count: items.length });
   } catch (e) {
     console.error('push-to-printtex error:', e);
     res.status(500).json({ error: e.message, stack: e.stack });
+  }
+});
+
+// GET /api/printtex-pushes — historique des envois vers Printtex (20 derniers)
+app.get('/api/printtex-pushes', async (_req, res) => {
+  try {
+    const result = await pool.query(
+      `SELECT id, pushed_at AS "pushedAt", firestore_created_at AS "firestoreCreatedAt",
+              item_count AS "itemCount", total_qty AS "totalQty", items
+       FROM printtex_pushes ORDER BY pushed_at DESC LIMIT 20`
+    );
+    res.json(result.rows);
+  } catch (e) {
+    res.status(500).json({ error: e.message });
+  }
+});
+
+// GET /api/printtex-queue — état de la file côté Printtex (tâches non produites)
+app.get('/api/printtex-queue', async (_req, res) => {
+  if (!PRINTTEX_BRAND_ID) return res.status(500).json({ error: 'PRINTTEX_BRAND_ID non configuré' });
+  try {
+    const db = getPrinttexDb();
+    const tasksRef = db.collection('brands').doc(PRINTTEX_BRAND_ID).collection('tasks');
+    const snap = await tasksRef.get();
+    const all = snap.docs.map(d => d.data());
+    const pending = all
+      .filter(t => !t.done)
+      .map(t => ({
+        nom: t.nom || '',
+        taille: t.taille || '',
+        couleur: t.couleur || '',
+        impression: t.impression || '',
+        quantity: Number(t.quantity) || 0,
+        readyQty: Number(t.readyQty) || 0,
+        createdAt: t.createdAt || null,
+      }))
+      .sort((a, b) => (a.createdAt || '').localeCompare(b.createdAt || ''));
+    res.json({
+      pendingCount: pending.length,
+      doneCount: all.filter(t => t.done).length,
+      pending,
+    });
+  } catch (e) {
+    console.error('printtex-queue error:', e);
+    res.status(500).json({ error: e.message });
   }
 });
 

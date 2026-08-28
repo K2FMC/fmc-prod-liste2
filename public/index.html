@@ -205,12 +205,24 @@
           <div class="actions">
             <button class="btn btn-primary" onclick="downloadXLSX()" id="xlsx-btn">↓ Télécharger XLSX</button>
             <button class="btn" onclick="copyCSV()">Copier CSV</button>
-            <button class="btn" onclick="pushToPrinttex()" id="printtex-btn">⇪ Envoyer à Printtex</button>
+            <button class="btn" onclick="preparePrinttexSend('delta')" id="printtex-new-btn">⇪ Envoyer les nouveautés</button>
+            <button class="btn" onclick="preparePrinttexSend('all')" id="printtex-btn">⇪ Envoyer tout à Printtex</button>
             <span id="copy-ok" style="font-size:12px;color:var(--green-text);align-self:center;display:none">✓ Copié</span>
             <span id="xlsx-err" style="font-size:12px;color:var(--red-text);align-self:center;display:none"></span>
             <span id="printtex-ok" style="font-size:12px;color:var(--green-text);align-self:center;display:none">✓ Envoyé</span>
             <span id="printtex-err" style="font-size:12px;color:var(--red-text);align-self:center;display:none"></span>
           </div>
+          <div id="printtex-last" style="font-size:12px;color:var(--text-faint);margin-top:10px">Dernier envoi Printtex : …</div>
+          <div id="printtex-confirm" style="display:none;margin-top:12px;padding:14px;border:1px solid var(--border-strong);border-radius:8px;background:var(--bg)"></div>
+        </div>
+      </div>
+      <div class="card">
+        <div class="card-header">
+          <span class="card-title">File d'attente Printtex (non produit)</span>
+          <button class="btn" onclick="loadPrinttexQueue()" id="printtex-queue-btn" style="font-size:12px;padding:4px 10px">↻ Rafraîchir</button>
+        </div>
+        <div class="card-body">
+          <div id="printtex-queue">Clique sur « Rafraîchir » pour voir ce qui est encore en attente chez Printtex.</div>
         </div>
       </div>
     </div>
@@ -993,33 +1005,166 @@ async function downloadXLSX() {
   }
 }
 
-async function pushToPrinttex() {
-  const btn = document.getElementById('printtex-btn');
+let printtexSendItems = [];
+
+function printtexKey(name, size, variant, impression) {
+  return [name, size, variant, impression].map(v => (v || '').trim().toUpperCase()).join(' | ');
+}
+
+function fmtPrinttexDT(iso) {
+  if (!iso) return '—';
+  const d = new Date(iso);
+  if (isNaN(d)) return iso;
+  return d.toLocaleDateString('fr-FR') + ' ' + d.toLocaleTimeString('fr-FR', { hour: '2-digit', minute: '2-digit' });
+}
+
+async function loadPrinttexStatus() {
+  const el = document.getElementById('printtex-last');
+  try {
+    const res = await fetch('/api/printtex-pushes');
+    const rows = await res.json();
+    if (!res.ok) throw new Error(rows.error || 'erreur');
+    if (!rows.length) { el.textContent = 'Dernier envoi Printtex : aucun envoi enregistré.'; return; }
+    const last = rows[0];
+    el.textContent = `Dernier envoi Printtex : ${fmtPrinttexDT(last.pushedAt)} — ${last.itemCount} article${last.itemCount > 1 ? 's' : ''}, ${last.totalQty} pièce${last.totalQty > 1 ? 's' : ''}`;
+  } catch (e) {
+    el.textContent = 'Dernier envoi Printtex : indisponible (' + e.message + ')';
+  }
+}
+
+async function loadPrinttexQueue() {
+  const el = document.getElementById('printtex-queue');
+  const btn = document.getElementById('printtex-queue-btn');
+  btn.disabled = true;
+  el.innerHTML = '<div class="loading"><div class="spinner"></div> Chargement…</div>';
+  try {
+    const res = await fetch('/api/printtex-queue');
+    const data = await res.json();
+    if (!res.ok) throw new Error(data.error || 'erreur');
+    if (!data.pending.length) {
+      el.innerHTML = `<div class="empty">Rien en attente chez Printtex. (${data.doneCount} tâche(s) terminée(s))</div>`;
+      return;
+    }
+    const rows = data.pending.map(t => `<tr>
+      <td>${t.nom}</td><td>${t.couleur || '—'}</td><td>${t.taille || '—'}</td>
+      <td>${t.impression || '—'}</td><td>${t.quantity}${t.readyQty ? ` <span style="color:var(--text-faint)">(${t.readyQty} faits)</span>` : ''}</td>
+      <td style="color:var(--text-faint)">${fmtPrinttexDT(t.createdAt)}</td></tr>`).join('');
+    el.innerHTML = `<div style="overflow-x:auto"><table>
+      <thead><tr><th>Produit</th><th>Couleur</th><th>Taille</th><th>Impression</th><th>Qté</th><th>Envoyé le</th></tr></thead>
+      <tbody>${rows}</tbody></table></div>
+      <div style="font-size:12px;color:var(--text-faint);margin-top:8px">${data.pending.length} tâche(s) non produite(s) — ${data.doneCount} terminée(s).</div>`;
+  } catch (e) {
+    el.innerHTML = '<div class="empty">Impossible de lire la file Printtex : ' + e.message + '</div>';
+  } finally {
+    btn.disabled = false;
+  }
+}
+
+async function preparePrinttexSend(mode) {
   const okEl = document.getElementById('printtex-ok');
   const errEl = document.getElementById('printtex-err');
+  const panel = document.getElementById('printtex-confirm');
   okEl.style.display = 'none';
   errEl.style.display = 'none';
-  const items = prodList.filter(p => p.toPrint > 0).sort((a, b) => a.name.localeCompare(b.name, 'fr'));
-  if (!items.length) { errEl.textContent = 'Aucun article à envoyer.'; errEl.style.display = 'inline'; return; }
+  const all = prodList.filter(p => p.toPrint > 0).sort((a, b) => a.name.localeCompare(b.name, 'fr'));
+  if (!all.length) { errEl.textContent = 'Aucun article à envoyer.'; errEl.style.display = 'inline'; return; }
+
+  let toSend = all;
+  let skipped = [];
+  let note = '';
+
+  if (mode === 'delta') {
+    panel.style.display = 'block';
+    panel.innerHTML = '<div class="loading"><div class="spinner"></div> Lecture de la file Printtex…</div>';
+    let queue;
+    try {
+      const res = await fetch('/api/printtex-queue');
+      queue = await res.json();
+      if (!res.ok) throw new Error(queue.error || 'erreur');
+    } catch (e) {
+      panel.innerHTML = '<div style="color:var(--red-text)">Impossible de lire la file Printtex : ' + e.message + '. Utilise « Envoyer tout » si besoin.</div>';
+      return;
+    }
+    const queued = {};
+    queue.pending.forEach(t => {
+      const k = printtexKey(t.nom, t.taille, t.couleur, t.impression);
+      queued[k] = (queued[k] || 0) + t.quantity;
+    });
+    toSend = [];
+    all.forEach(p => {
+      const k = printtexKey(p.name, p.size, p.variant, p.typeImpression);
+      const already = queued[k] || 0;
+      if (already >= p.toPrint) { skipped.push(p); return; }
+      toSend.push(already > 0 ? { ...p, toPrint: p.toPrint - already } : p);
+    });
+    note = 'Comparé à ce qui est encore en attente chez Printtex (non produit). Les quantités déjà en file sont déduites.';
+  }
+
+  printtexSendItems = toSend.map(p => ({
+    name: p.name, variant: p.variant || '', size: p.size || '',
+    typeImpression: p.typeImpression || '', toPrint: p.toPrint,
+    imageUrl: p.imageUrl || '',
+  }));
+
+  const totalQty = printtexSendItems.reduce((a, it) => a + it.toPrint, 0);
+  panel.style.display = 'block';
+  if (!printtexSendItems.length) {
+    panel.innerHTML = `<div style="font-weight:600;margin-bottom:6px">Rien de nouveau à envoyer</div>
+      <div style="font-size:13px;color:var(--text-muted)">Les ${skipped.length} article(s) de la liste sont déjà dans la file Printtex.</div>
+      <div class="actions" style="margin-top:10px"><button class="btn" onclick="cancelPrinttexSend()">Fermer</button></div>`;
+    return;
+  }
+  const rows = printtexSendItems.map(it => `<tr>
+    <td>${it.name}</td><td>${it.variant || '—'}</td><td>${it.size || '—'}</td>
+    <td>${it.typeImpression || '—'}</td><td><strong>${it.toPrint}</strong></td></tr>`).join('');
+  const skippedLine = skipped.length
+    ? `<div style="font-size:12px;color:var(--text-faint);margin-top:8px">${skipped.length} article(s) ignoré(s) — déjà en file chez Printtex.</div>` : '';
+  panel.innerHTML = `
+    <div style="font-weight:600;margin-bottom:2px">${mode === 'delta' ? 'Envoyer les nouveautés' : 'Envoyer toute la liste'} — ${printtexSendItems.length} article(s), ${totalQty} pièce(s)</div>
+    ${note ? `<div style="font-size:12px;color:var(--text-faint);margin-bottom:8px">${note}</div>` : ''}
+    <div style="overflow-x:auto;max-height:260px;overflow-y:auto"><table>
+      <thead><tr><th>Produit</th><th>Couleur</th><th>Taille</th><th>Impression</th><th>Qté</th></tr></thead>
+      <tbody>${rows}</tbody></table></div>
+    ${skippedLine}
+    ${mode === 'all' ? '<div style="font-size:12px;color:var(--red-text);margin-top:8px">⚠ Envoie tout, y compris ce qui est peut-être déjà en file chez Printtex (risque de doublons).</div>' : ''}
+    <div class="actions" style="margin-top:12px">
+      <button class="btn btn-primary" onclick="confirmPrinttexSend()" id="printtex-confirm-btn">Confirmer l'envoi</button>
+      <button class="btn" onclick="cancelPrinttexSend()">Annuler</button>
+    </div>`;
+}
+
+function cancelPrinttexSend() {
+  printtexSendItems = [];
+  document.getElementById('printtex-confirm').style.display = 'none';
+}
+
+async function confirmPrinttexSend() {
+  const btn = document.getElementById('printtex-confirm-btn');
+  const okEl = document.getElementById('printtex-ok');
+  const errEl = document.getElementById('printtex-err');
+  if (!printtexSendItems.length) return;
   btn.disabled = true;
   btn.textContent = '…';
   try {
     const res = await fetch('/api/push-to-printtex', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ items })
+      body: JSON.stringify({ items: printtexSendItems })
     });
     const data = await res.json();
     if (!res.ok) { console.error('push-to-printtex:', data); throw new Error(data.error || 'Échec de l\'envoi'); }
     okEl.textContent = `✓ ${data.count} article${data.count > 1 ? 's' : ''} envoyé${data.count > 1 ? 's' : ''}`;
     okEl.style.display = 'inline';
-    setTimeout(() => okEl.style.display = 'none', 3000);
+    setTimeout(() => okEl.style.display = 'none', 4000);
+    cancelPrinttexSend();
+    loadPrinttexStatus();
+    loadPrinttexQueue();
   } catch (e) {
     errEl.textContent = '✗ ' + e.message;
     errEl.style.display = 'inline';
   } finally {
     btn.disabled = false;
-    btn.textContent = '⇪ Envoyer à Printtex';
+    btn.textContent = 'Confirmer l\'envoi';
   }
 }
 
@@ -1035,6 +1180,7 @@ loadSurplus();
 loadOrders();
 updateValidateBadge();
 loadManualItems();
+loadPrinttexStatus();
 </script>
 </body>
 </html>

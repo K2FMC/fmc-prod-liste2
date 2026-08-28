@@ -189,3 +189,24 @@ describe('POST /api/export', () => {
     expect(res.status).toBe(200);
   });
 });
+
+// ---------------------------------------------------------------------------
+// GET /api/printtex-pushes
+// ---------------------------------------------------------------------------
+describe('GET /api/printtex-pushes', () => {
+  it('retourne l\'historique des envois', async () => {
+    mockQuery.mockResolvedValueOnce({
+      rows: [{ id: 2, pushedAt: '2026-08-28T10:00:00Z', firestoreCreatedAt: '2026-08-28T10:00:00Z', itemCount: 3, totalQty: 12, items: [] }],
+    });
+    const res = await request(app).get('/api/printtex-pushes');
+    expect(res.status).toBe(200);
+    expect(res.body).toHaveLength(1);
+    expect(res.body[0].itemCount).toBe(3);
+  });
+
+  it('retourne 500 si la base de données échoue', async () => {
+    mockQuery.mockRejectedValueOnce(new Error('DB down'));
+    const res = await request(app).get('/api/printtex-pushes');
+    expect(res.status).toBe(500);
+  });
+});
