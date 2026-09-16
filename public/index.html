@@ -1049,15 +1049,32 @@ async function loadPrinttexQueue() {
     const rows = data.pending.map(t => `<tr>
       <td>${t.nom}</td><td>${t.couleur || '—'}</td><td>${t.taille || '—'}</td>
       <td>${t.impression || '—'}</td><td>${t.quantity}${t.readyQty ? ` <span style="color:var(--text-faint)">(${t.readyQty} faits)</span>` : ''}</td>
-      <td style="color:var(--text-faint)">${fmtPrinttexDT(t.createdAt)}</td></tr>`).join('');
+      <td style="color:var(--text-faint)">${fmtPrinttexDT(t.createdAt)}</td>
+      <td><button class="btn" style="font-size:11px;padding:2px 8px" onclick="removePrinttexTask('${t.id}', this)">Retirer</button></td></tr>`).join('');
     el.innerHTML = `<div style="overflow-x:auto"><table>
-      <thead><tr><th>Produit</th><th>Couleur</th><th>Taille</th><th>Impression</th><th>Qté</th><th>Envoyé le</th></tr></thead>
+      <thead><tr><th>Produit</th><th>Couleur</th><th>Taille</th><th>Impression</th><th>Qté</th><th>Envoyé le</th><th></th></tr></thead>
       <tbody>${rows}</tbody></table></div>
       <div style="font-size:12px;color:var(--text-faint);margin-top:8px">${data.pending.length} tâche(s) non produite(s) — ${data.doneCount} terminée(s).</div>`;
   } catch (e) {
     el.innerHTML = '<div class="empty">Impossible de lire la file Printtex : ' + e.message + '</div>';
   } finally {
     btn.disabled = false;
+  }
+}
+
+async function removePrinttexTask(id, btn) {
+  if (!confirm('Retirer ce produit de la file Printtex ? (à utiliser si tu le fabriques en interne)')) return;
+  btn.disabled = true;
+  btn.textContent = '…';
+  try {
+    const res = await fetch('/api/printtex-queue/' + encodeURIComponent(id), { method: 'DELETE' });
+    const data = await res.json();
+    if (!res.ok) throw new Error(data.error || 'erreur');
+    await loadPrinttexQueue();
+  } catch (e) {
+    alert('Impossible de retirer cette tâche : ' + e.message);
+    btn.disabled = false;
+    btn.textContent = 'Retirer';
   }
 }
 

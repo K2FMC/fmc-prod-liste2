@@ -428,6 +428,7 @@ app.get('/api/printtex-queue', async (_req, res) => {
     const pending = all
       .filter(t => !t.done)
       .map(t => ({
+        id: t.id,
         nom: t.nom || '',
         taille: t.taille || '',
         couleur: t.couleur || '',
@@ -444,6 +445,39 @@ app.get('/api/printtex-queue', async (_req, res) => {
     });
   } catch (e) {
     console.error('printtex-queue error:', e);
+    res.status(500).json({ error: e.message });
+  }
+});
+
+// DELETE /api/printtex-queue/:id — retire une tâche de la file Printtex
+// (ex : produit finalement fabriqué en interne et non chez Printtex)
+app.delete('/api/printtex-queue/:id', async (req, res) => {
+  if (!PRINTTEX_BRAND_ID) return res.status(500).json({ error: 'PRINTTEX_BRAND_ID non configuré' });
+  const { id } = req.params;
+  try {
+    const db = getPrinttexDb();
+    const tasksRef = db.collection('brands').doc(PRINTTEX_BRAND_ID).collection('tasks');
+    const taskRef = tasksRef.doc(id);
+    const taskSnap = await taskRef.get();
+    if (!taskSnap.exists) return res.status(404).json({ error: 'Tâche introuvable' });
+    await taskRef.delete();
+
+    // Recalcule le résumé de la marque, comme après un push (voir plus haut).
+    const allTasksSnap = await tasksRef.get();
+    const allTasks = allTasksSnap.docs.map(d => d.data());
+    const pending = allTasks.filter(t => !t.done && t.createdAt);
+    const oldestPendingDate = pending.length
+      ? pending.reduce((min, t) => (t.createdAt < min ? t.createdAt : min), pending[0].createdAt)
+      : null;
+    await db.collection('brands').doc(PRINTTEX_BRAND_ID).update({
+      taskTotal: allTasks.length,
+      taskDone: allTasks.filter(t => t.done).length,
+      oldestPendingDate,
+    });
+
+    res.json({ success: true });
+  } catch (e) {
+    console.error('printtex-queue delete error:', e);
     res.status(500).json({ error: e.message });
   }
 });
