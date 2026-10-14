@@ -798,6 +798,8 @@ function renderProdList(orderCount) {
 async function loadSurplus() {
   const res = await fetch('/api/surplus');
   surplus = await res.json();
+  // `used` n'est pas persisté : on recalcule les déductions sur le stock rechargé
+  if (lastOrderEdges !== null || manualItems.length) refreshProdList();
   renderSurplus();
 }
 
