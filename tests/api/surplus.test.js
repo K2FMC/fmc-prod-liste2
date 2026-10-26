@@ -58,6 +58,19 @@ describe('POST /api/surplus', () => {
     expect(res.body.qty).toBe(6);
   });
 
+  it('retrouve la ligne par ID de variante et met à jour son nom', async () => {
+    mockQuery
+      .mockResolvedValueOnce({ rows: [{ id: 7, sku: 'Ancien Nom', color: '', size: 'M', qty: 4, variant_id: 'gid://v/1' }] })
+      .mockResolvedValueOnce({ rows: [{ id: 7, sku: 'Nouveau Nom', color: '', size: 'M', qty: 5, variant_id: 'gid://v/1' }] });
+    const res = await request(app)
+      .post('/api/surplus')
+      .send({ sku: 'Nouveau Nom', size: 'M', qty: 1, variant_id: 'gid://v/1' });
+    expect(res.status).toBe(200);
+    expect(mockQuery.mock.calls[0][1]).toEqual(['gid://v/1']);
+    expect(mockQuery.mock.calls[1][1]).toEqual([1, 'Nouveau Nom', '', 'M', 7]);
+    expect(res.body.sku).toBe('Nouveau Nom');
+  });
+
   it('retourne 500 si la base de données échoue', async () => {
     mockQuery.mockRejectedValueOnce(new Error('DB down'));
     const res = await request(app)

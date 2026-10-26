@@ -70,6 +70,7 @@ async function initDB() {
     )
   `);
   await pool.query(`ALTER TABLE surplus ADD COLUMN IF NOT EXISTS color TEXT DEFAULT ''`);
+  await pool.query(`ALTER TABLE surplus ADD COLUMN IF NOT EXISTS variant_id TEXT DEFAULT ''`);
   await pool.query(`
     CREATE TABLE IF NOT EXISTS manual_items (
       id SERIAL PRIMARY KEY,
@@ -132,14 +133,17 @@ app.get('/api/surplus', async (req, res) => {
 
 // POST surplus
 app.post('/api/surplus', async (req, res) => {
-  const { sku, color = '', size, qty } = req.body;
+  const { sku, color = '', size, qty, variant_id = '' } = req.body;
   try {
-    const existing = await pool.query('SELECT * FROM surplus WHERE sku = $1 AND size = $2 AND color = $3', [sku, size, color]);
+    // L'ID de variante Shopify survit aux renommages ; le nom ne sert que pour les anciennes lignes
+    const existing = variant_id
+      ? await pool.query('SELECT * FROM surplus WHERE variant_id = $1', [variant_id])
+      : await pool.query('SELECT * FROM surplus WHERE sku = $1 AND size = $2 AND color = $3', [sku, size, color]);
     if (existing.rows.length > 0) {
-      const result = await pool.query('UPDATE surplus SET qty = qty + $1 WHERE sku = $2 AND size = $3 AND color = $4 RETURNING *', [qty, sku, size, color]);
+      const result = await pool.query('UPDATE surplus SET qty = qty + $1, sku = $2, color = $3, size = $4 WHERE id = $5 RETURNING *', [qty, sku, color, size, existing.rows[0].id]);
       res.json(result.rows[0]);
     } else {
-      const result = await pool.query('INSERT INTO surplus (sku, color, size, qty) VALUES ($1, $2, $3, $4) RETURNING *', [sku, color, size, qty]);
+      const result = await pool.query('INSERT INTO surplus (sku, color, size, qty, variant_id) VALUES ($1, $2, $3, $4, $5) RETURNING *', [sku, color, size, qty, variant_id]);
       res.json(result.rows[0]);
     }
   } catch(e) {

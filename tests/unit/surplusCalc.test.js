@@ -78,6 +78,27 @@ describe('computeDeductions', () => {
     expect(result.deducted).toBe(0);
     expect(result.toPrint).toBe(10);
   });
+
+  it('correspond par ID de variante même si le produit a été renommé', () => {
+    const items = [{ ...item('Nouveau Nom', 'Blanc', 'M', 2), variantId: 'gid://shopify/ProductVariant/1' }];
+    const surplus = [{ ...stock(1, 'Ancien Nom', 'Blanc', 'M', 5), variant_id: 'gid://shopify/ProductVariant/1' }];
+    const [result] = computeDeductions(items, surplus);
+    expect(result.deducted).toBe(2);
+  });
+
+  it('ne correspond pas si les ID de variante diffèrent, même avec le même nom', () => {
+    const items = [{ ...item('Produit', '', 'M', 2), variantId: 'gid://shopify/ProductVariant/2' }];
+    const surplus = [{ ...stock(1, 'Produit', '', 'M', 5), variant_id: 'gid://shopify/ProductVariant/1' }];
+    const [result] = computeDeductions(items, surplus);
+    expect(result.deducted).toBe(0);
+  });
+
+  it('retombe sur le nom quand la ligne de stock n\'a pas d\'ID de variante', () => {
+    const items = [{ ...item('Produit', '', 'M', 2), variantId: 'gid://shopify/ProductVariant/1' }];
+    const surplus = [stock(1, 'Produit', '', 'M', 5)];
+    const [result] = computeDeductions(items, surplus);
+    expect(result.deducted).toBe(2);
+  });
 });
 
 describe('computePerOrderAllocations', () => {

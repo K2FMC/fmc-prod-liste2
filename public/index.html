@@ -433,13 +433,20 @@ function renderManualList() {
   </table>`;
 }
 
+// Rapprochement par ID de variante Shopify (stable aux renommages / changements de SKU),
+// sinon par nom + taille + couleur (anciennes lignes de stock, ajouts manuels)
+function findSurplusFor(item) {
+  return surplus.find(s => {
+    if (s.variant_id && item.variantId) return s.variant_id === item.variantId;
+    return item.name.toUpperCase().includes(s.sku.toUpperCase()) &&
+      s.size === item.size &&
+      (!s.color || s.color.toUpperCase() === (item.variant || '').toUpperCase());
+  });
+}
+
 function injectManualItems() {
   manualItems.forEach(mi => {
-    const s = surplus.find(s =>
-      mi.name.toUpperCase().includes(s.sku.toUpperCase()) &&
-      s.size === mi.size &&
-      (!s.color || s.color === '' || s.color.toUpperCase() === (mi.variant || '').toUpperCase())
-    );
+    const s = findSurplusFor(mi);
     const available = s ? Math.max(0, s.qty - (s.used || 0)) : 0;
     const deducted = Math.min(available, mi.qty);
     if (s && deducted > 0) s.used = (s.used || 0) + deducted;
@@ -639,7 +646,7 @@ async function loadOrders() {
       orders(first: 100, query: "fulfillment_status:unfulfilled status:open") {
         edges { node { name lineItems(first: 50) { edges { node {
           title variantTitle quantity
-          variant { sku selectedOptions { name value } image { url } }
+          variant { id sku selectedOptions { name value } image { url } }
           product { tags metafield(namespace: "custom", key: "production_lieu") { value } typeImpression: metafield(namespace: "custom", key: "type_impression") { value } images(first: 1) { edges { node { url } } } }
         } } } } }
       }
@@ -672,8 +679,9 @@ function processOrders(orderEdges) {
       const variant = colorOpt ? colorOpt.value : '';
       const imageUrl = item.variant?.image?.url || item.product.images?.edges?.[0]?.node?.url || '';
       const typeImpression = item.product.typeImpression?.value || '';
-      const key = item.title + '||' + variant + '||' + size;
-      if (!agg[key]) agg[key] = { name: item.title, variant, size, qty: 0, orders: {}, imageUrl, typeImpression };
+      const variantId = item.variant?.id || '';
+      const key = variantId || item.title + '||' + variant + '||' + size;
+      if (!agg[key]) agg[key] = { name: item.title, variant, size, variantId, qty: 0, orders: {}, imageUrl, typeImpression };
       agg[key].qty += item.quantity;
       agg[key].orders[order.name] = (agg[key].orders[order.name] || 0) + item.quantity;
     }
@@ -683,11 +691,7 @@ function processOrders(orderEdges) {
   // Calcul déductions surplus + allocation FIFO par commande
   const newOrderAllocations = {};
   prodList = Object.values(agg).map(item => {
-    const s = surplus.find(s =>
-      item.name.toUpperCase().includes(s.sku.toUpperCase()) &&
-      s.size === item.size &&
-      (!s.color || s.color === '' || s.color.toUpperCase() === item.variant.toUpperCase())
-    );
+    const s = findSurplusFor(item);
     const available = s ? Math.max(0, s.qty - (s.used || 0)) : 0;
     const deducted = Math.min(available, item.qty);
     if (s && deducted > 0) {
@@ -849,7 +853,7 @@ function renderSurplusSearchResults(edges) {
       const size = sizeOpt ? sizeOpt.value : 'Unique';
       const color = colorOpt ? colorOpt.value : '';
       const idx = surplusSearchCache.length;
-      surplusSearchCache.push({ name: p.title, variant: color, size });
+      surplusSearchCache.push({ name: p.title, variant: color, size, variantId: v.id });
       const qtyId = 's-qty-' + idx;
       return `<tr>
         <td>${color || '<span style="color:var(--text-faint)">—</span>'}</td>
@@ -884,7 +888,7 @@ async function addSurplusFromSearch(idx, qtyId, btn) {
     await fetch('/api/surplus', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ sku: data.name, color: data.variant, size: data.size, qty })
+      body: JSON.stringify({ sku: data.name, color: data.variant, size: data.size, qty, variant_id: data.variantId })
     });
     await loadSurplus();
   } catch(_) {}
