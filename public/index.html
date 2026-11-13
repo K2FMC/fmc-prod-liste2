@@ -2,7 +2,7 @@
 <html lang="fr">
 <head>
 <meta charset="UTF-8">
-<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover">
 <title>FMC BETTER — Atelier Paris</title>
 <style>
   *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
@@ -95,6 +95,85 @@
   .validate-actions { display: flex; gap: 6px; }
   .aj-result-img { width: 44px; height: 44px; object-fit: cover; border-radius: 6px; flex-shrink: 0; }
   .manual-tag { display: inline-block; font-size: 10px; font-weight: 600; padding: 1px 5px; border-radius: 3px; background: var(--amber-bg); color: var(--amber-text); margin-left: 4px; vertical-align: middle; }
+  .prod-filters { padding: 10px 16px; border-bottom: 1px solid var(--border); display: flex; gap: 8px; align-items: center; }
+  .prod-filters input { flex: 1; }
+
+  .qty-cap { font-size: 10px; color: var(--text-faint); }
+  @media (min-width: 769px) { .m-only { display: none !important; } }
+
+  @media (max-width: 768px) {
+    /* Barre latérale → onglets en bas d'écran */
+    .app { display: block; }
+    .main { margin-left: 0; padding: 1rem 1rem calc(80px + env(safe-area-inset-bottom)); }
+    .sidebar { top: auto; width: 100%; min-height: 0; padding: 0 0 env(safe-area-inset-bottom); flex-direction: row; border-right: none; border-top: 1px solid var(--border); z-index: 10; }
+    .brand, .sidebar-footer { display: none; }
+    .sidebar nav { display: flex; width: 100%; }
+    .nav-item { flex: 1; min-width: 0; position: relative; flex-direction: column; justify-content: center; gap: 3px; padding: 8px 2px 6px; font-size: 10px; line-height: 1.2; text-align: center; border-left: none; border-top: 2px solid transparent; -webkit-tap-highlight-color: transparent; transition: none; }
+    .nav-item:hover { background: transparent; }
+    .nav-item.active { border-top-color: var(--accent); background: transparent; }
+    .nav-icon { width: 18px; height: 18px; }
+    .nav-badge { position: absolute; top: 3px; left: 50%; margin-left: 6px; }
+
+    /* Mise en page générale */
+    .page-header { flex-wrap: wrap; gap: 10px; margin-bottom: 1rem; }
+    .page-title { font-size: 20px; }
+    .page-sub { font-size: 12px; }
+    .card-header, .validate-card-header { flex-wrap: wrap; gap: 8px; }
+    .card-header > :last-child:not(:first-child) { margin-left: auto; }
+    .metrics { gap: 8px; margin-bottom: 1rem; }
+    .metric { padding: 10px 12px; }
+    .metric-label { font-size: 11px; text-transform: none; letter-spacing: 0; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; margin-bottom: 4px; }
+    .metric-value { font-size: 22px; }
+    .metric-sub { display: none; }
+    .prod-filters { display: grid; grid-template-columns: 1fr 1fr; }
+    .prod-filters input, .prod-filters select.m-only, .prod-filters select:only-child { grid-column: 1 / -1; }
+    .prod-filters select { width: 100%; min-width: 0; }
+    .actions { flex-wrap: wrap; }
+    .actions .btn { flex: 1 1 auto; justify-content: center; }
+    .csv-box { font-size: 11px; padding: 12px; white-space: pre-wrap; word-break: break-word; max-height: 220px; }
+
+    /* Tactile : zones de tap plus grandes, 16 px évite le zoom automatique d'iOS sur les champs */
+    .btn { min-height: 36px; }
+    .qty-ctrl-btn { width: 32px; height: 32px; }
+    input[type="text"], input[type="password"], input[type="number"], select { font-size: 16px !important; }
+    tbody tr:hover td { background: transparent; }
+
+    /* Tableaux restants : resserrés */
+    th { padding: 8px 10px; }
+    td { padding: 9px 10px; }
+    .card, .validate-card { overflow-x: auto; }
+
+    /* Résultats de recherche : colonnes évidentes (couleur, taille, quantité, ajouter), sans en-tête */
+    :is(#aj-results, #s-results) thead { display: none; }
+    :is(#aj-results, #s-results) td { padding: 8px 6px; }
+    :is(#aj-results, #s-results) td:last-child { text-align: right; }
+
+    /* Listes (.m-list) : chaque ligne devient une fiche
+       ligne 1 : c-main (nom) … c-qty (chiffre clé à droite)
+       ligne 2 : c-meta séparés par « · » … c-act (bouton à droite)
+       c-ctrl (contrôle de quantité) passe sur sa propre ligne */
+    table.m-list, .m-list tbody { display: block; }
+    .m-list thead { display: none; }
+    .m-list tbody tr { display: flex; flex-wrap: wrap; align-items: center; gap: 4px 8px; padding: 12px 16px; border-bottom: 1px solid var(--border); }
+    .m-list tbody tr:last-child { border-bottom: none; }
+    .m-list td { display: block; padding: 0; border: none; }
+    .m-list td[colspan] { flex: 1 1 100%; }
+    .m-list td.c-main { flex: 1 1 0; min-width: 0; }
+    .m-list td.c-qty { flex: none; align-self: flex-start; text-align: right; }
+    .m-list tbody tr::before { content: ''; order: 1; flex-basis: 100%; height: 0; margin-top: -4px; }
+    .m-list td.c-meta { order: 2; color: var(--text-muted); }
+    .m-list td.c-meta[data-label]::before { content: attr(data-label) ' '; }
+    .m-list td.c-meta ~ td.c-meta::before { content: '· '; color: var(--text-faint); }
+    .m-list td.c-meta ~ td.c-meta[data-label]::before { content: '· ' attr(data-label) ' '; }
+    .m-list td.c-status { order: 2; }
+    .m-list td.c-status:has(.badge-blue) { display: none; }
+    .m-list tr:has(.c-ctrl)::after { content: ''; order: 3; flex-basis: 100%; height: 0; }
+    .m-list td.c-ctrl { order: 4; margin-right: auto; }
+    .m-list td.c-act { order: 2; margin-left: auto; }
+    .m-list tr:has(.c-ctrl) td.c-act { order: 4; }
+    #printtex-confirm div:has(> .m-list) { max-height: 50vh !important; }
+    :is(.card-body, #printtex-confirm) .m-list tbody tr { padding-left: 0; padding-right: 0; }
+  }
 </style>
 </head>
 <body>
@@ -154,8 +233,8 @@
             <button class="btn btn-sm" onclick="loadOrders()">↺ Actualiser</button>
           </div>
         </div>
-        <div style="padding:10px 16px;border-bottom:1px solid var(--border);display:flex;gap:8px;align-items:center">
-          <input type="text" id="pf-search" placeholder="Rechercher un produit…" style="flex:1;padding:6px 10px;font-size:12px" oninput="applyProdFilter()">
+        <div class="prod-filters">
+          <input type="text" id="pf-search" placeholder="Rechercher un produit…" style="padding:6px 10px;font-size:12px" oninput="applyProdFilter()">
           <select id="pf-size" style="font-size:12px;padding:6px 8px" onchange="applyProdFilter()">
             <option value="">Toutes tailles</option>
             <option>XS</option><option>S</option><option>M</option><option>L</option><option>XL</option><option>XXL</option><option>Unique</option>
@@ -164,6 +243,13 @@
             <option value="">Tous statuts</option>
             <option value="print">À imprimer</option>
             <option value="covered">Couvert surplus</option>
+          </select>
+          <select id="pf-sort" class="m-only" onchange="setProdSort(this.value)">
+            <option value="name|asc">Trier : produit (A → Z)</option>
+            <option value="name|desc">Trier : produit (Z → A)</option>
+            <option value="size|asc">Trier : taille</option>
+            <option value="toPrint|desc">Trier : à imprimer (+ → −)</option>
+            <option value="qty|desc">Trier : commandé (+ → −)</option>
           </select>
         </div>
         <div id="prod-content"><div class="empty">Configure la connexion Shopify pour charger les commandes.</div></div>
@@ -187,6 +273,14 @@
         <div class="card-header">
           <span class="card-title">Stock surplus actuel</span>
           <span class="badge badge-amber" id="surplus-count">0 références</span>
+        </div>
+        <div class="prod-filters m-only">
+          <select id="surplus-sort" onchange="setSurplusSort(this.value)">
+            <option value="sku|asc">Trier : produit (A → Z)</option>
+            <option value="size|asc">Trier : taille</option>
+            <option value="left|desc">Trier : disponible (+ → −)</option>
+            <option value="qty|desc">Trier : stock (+ → −)</option>
+          </select>
         </div>
         <div id="surplus-table"></div>
       </div>
@@ -421,13 +515,13 @@ function renderManualList() {
   card.style.display = 'block';
   countEl.textContent = manualItems.length + ' article' + (manualItems.length > 1 ? 's' : '');
   const rows = manualItems.map(mi => `<tr>
-    <td><div class="prod-name">${mi.name}</div></td>
-    <td>${mi.variant || '—'}</td>
-    <td>${mi.size}</td>
-    <td>${mi.qty}</td>
-    <td><button class="btn btn-sm btn-danger" onclick="removeManualItem(${mi.id})">Retirer</button></td>
+    <td class="c-main"><div class="prod-name">${mi.name}</div></td>
+    <td class="c-meta">${mi.variant || '—'}</td>
+    <td class="c-meta">${mi.size}</td>
+    <td class="c-meta" data-label="Qté">${mi.qty}</td>
+    <td class="c-act"><button class="btn btn-sm btn-danger" onclick="removeManualItem(${mi.id})">Retirer</button></td>
   </tr>`).join('');
-  list.innerHTML = `<table>
+  list.innerHTML = `<table class="m-list">
     <thead><tr><th>Produit</th><th>Couleur</th><th>Taille</th><th>Qté</th><th></th></tr></thead>
     <tbody>${rows}</tbody>
   </table>`;
@@ -482,6 +576,18 @@ function sortProd(col) {
     prodSort = { col, dir: 'asc' };
   }
   renderProdList(lastOrderCount);
+}
+
+function setProdSort(value) {
+  const [col, dir] = value.split('|');
+  prodSort = { col, dir };
+  renderProdList(lastOrderCount);
+}
+
+function setSurplusSort(value) {
+  const [col, dir] = value.split('|');
+  surplusSort = { col, dir };
+  renderSurplus();
 }
 
 function applyProdFilter() {
@@ -541,10 +647,10 @@ function renderValidate() {
     const items = byOrder[ref];
     const total = items.reduce((a, d) => a + d.allocated, 0);
     const rows = items.map(d => `<tr>
-      <td><div class="prod-name">${d.name}</div></td>
-      <td>${d.variant || '—'}</td>
-      <td>${d.size}</td>
-      <td><span class="badge badge-green">${d.allocated} unité${d.allocated > 1 ? 's' : ''}</span></td>
+      <td class="c-main"><div class="prod-name">${d.name}</div></td>
+      <td class="c-meta">${d.variant || '—'}</td>
+      <td class="c-meta">${d.size}</td>
+      <td class="c-qty"><span class="badge badge-green">${d.allocated} unité${d.allocated > 1 ? 's' : ''}</span></td>
     </tr>`).join('');
     return `<div class="validate-card">
       <div class="validate-card-header">
@@ -554,7 +660,7 @@ function renderValidate() {
           <button class="btn btn-sm btn-primary" onclick="confirmOrder('${ref}')">Confirmer — ${total} du stock</button>
         </div>
       </div>
-      <table>
+      <table class="m-list">
         <thead><tr><th>Produit</th><th>Couleur</th><th>Taille</th><th>Qté stock utilisée</th></tr></thead>
         <tbody>${rows}</tbody>
       </table>
@@ -788,14 +894,16 @@ function renderProdList(orderCount) {
 
   const emptyMsg = filtered.length === 0 ? '<tr><td colspan="6"><div class="empty">Aucun article ne correspond aux filtres.</div></td></tr>' : '';
   const rows = filtered.map(p => `<tr>
-    <td><div class="prod-name">${p.name}</div><div class="prod-ref">${[...new Set(p.refs)].join(', ')}${p.isManual ? ' <span class="manual-tag">Manuel</span>' : ''}</div></td>
-    <td>${p.variant || '—'}</td><td>${p.size}</td>
-    <td style="color:var(--text-muted)">${p.qty}</td>
-    <td><div class="qty-main">${p.toPrint > 0 ? p.toPrint : '<span style="color:var(--text-faint)">0</span>'}</div>${p.deducted > 0 ? `<div class="qty-note">− ${p.deducted} surplus</div>` : ''}</td>
-    <td>${p.toPrint === 0 ? '<span class="badge badge-green">Couvert surplus</span>' : '<span class="badge badge-blue">À imprimer</span>'}</td>
+    <td class="c-main"><div class="prod-name">${p.name}</div><div class="prod-ref">${[...new Set(p.refs)].join(', ')}${p.isManual ? ' <span class="manual-tag">Manuel</span>' : ''}</div></td>
+    <td class="c-meta">${p.variant || '—'}</td><td class="c-meta">${p.size}</td>
+    <td class="c-meta" data-label="Commandé" style="color:var(--text-muted)">${p.qty}</td>
+    <td class="c-qty"><div class="qty-main">${p.toPrint > 0 ? p.toPrint : '<span style="color:var(--text-faint)">0</span>'}</div><div class="qty-cap m-only">à imprimer</div>${p.deducted > 0 ? `<div class="qty-note">− ${p.deducted} surplus</div>` : ''}</td>
+    <td class="c-status">${p.toPrint === 0 ? '<span class="badge badge-green">Couvert surplus</span>' : '<span class="badge badge-blue">À imprimer</span>'}</td>
   </tr>`).join('');
 
-  document.getElementById('prod-content').innerHTML = `<table>${thead}<tbody>${emptyMsg}${rows}</tbody></table>`;
+  const sortSel = document.getElementById('pf-sort');
+  if (sortSel) sortSel.value = prodSort.col + '|' + prodSort.dir;
+  document.getElementById('prod-content').innerHTML = `<table class="m-list">${thead}<tbody>${emptyMsg}${rows}</tbody></table>`;
 }
 
 
@@ -947,21 +1055,23 @@ function renderSurplus() {
   const rows = sorted.map(s => {
     const left = Math.max(0, s.qty - (s.used || 0));
     return `<tr>
-      <td class="prod-name">${s.sku}</td>
-      <td>${s.color || '—'}</td>
-      <td>${s.size}</td>
-      <td><div class="qty-ctrl">
+      <td class="c-main prod-name">${s.sku}</td>
+      <td class="c-meta">${s.color || '—'}</td>
+      <td class="c-meta">${s.size}</td>
+      <td class="c-ctrl"><div class="qty-ctrl"><span class="m-only" style="color:var(--text-muted)">Stock</span>
         <button class="qty-ctrl-btn" onclick="updateSurplusQty(${s.id}, -1)" title="Décrémenter">−</button>
         <span>${s.qty}</span>
         <button class="qty-ctrl-btn" onclick="updateSurplusQty(${s.id}, 1)" title="Incrémenter">+</button>
       </div></td>
-      <td>${s.used || '—'}</td>
-      <td>${left > 0 ? `<span class="badge badge-green">${left} dispo</span>` : '<span class="badge badge-amber">Épuisé</span>'}</td>
-      <td><button class="btn btn-sm btn-danger" onclick="removeSurplus(${s.id})">Retirer</button></td>
+      <td class="c-meta" data-label="Consommé">${s.used || 0}</td>
+      <td class="c-qty">${left > 0 ? `<span class="badge badge-green">${left} dispo</span>` : '<span class="badge badge-amber">Épuisé</span>'}</td>
+      <td class="c-act"><button class="btn btn-sm btn-danger" onclick="removeSurplus(${s.id})">Retirer</button></td>
     </tr>`;
   }).join('');
 
-  container.innerHTML = `<table>${thead}<tbody>${rows}</tbody></table>`;
+  const surplusSel = document.getElementById('surplus-sort');
+  if (surplusSel) surplusSel.value = surplusSort.col + '|' + surplusSort.dir;
+  container.innerHTML = `<table class="m-list">${thead}<tbody>${rows}</tbody></table>`;
 }
 
 function buildCSVLines(includePhoto) {
@@ -1053,11 +1163,11 @@ async function loadPrinttexQueue() {
       return;
     }
     const rows = data.pending.map(t => `<tr>
-      <td>${t.nom}</td><td>${t.couleur || '—'}</td><td>${t.taille || '—'}</td>
-      <td>${t.impression || '—'}</td><td>${t.quantity}${t.readyQty ? ` <span style="color:var(--text-faint)">(${t.readyQty} faits)</span>` : ''}</td>
-      <td style="color:var(--text-faint)">${fmtPrinttexDT(t.createdAt)}</td>
-      <td><button class="btn" style="font-size:11px;padding:2px 8px" onclick="removePrinttexTask('${t.id}', this)">Retirer</button></td></tr>`).join('');
-    el.innerHTML = `<div style="overflow-x:auto"><table>
+      <td class="c-main prod-name">${t.nom}</td><td class="c-meta">${t.couleur || '—'}</td><td class="c-meta">${t.taille || '—'}</td>
+      <td class="c-meta">${t.impression || '—'}</td><td class="c-qty"><strong>${t.quantity}</strong>${t.readyQty ? ` <span style="color:var(--text-faint)">(${t.readyQty} faits)</span>` : ''}</td>
+      <td class="c-meta" data-label="Envoyé le" style="color:var(--text-faint)">${fmtPrinttexDT(t.createdAt)}</td>
+      <td class="c-act"><button class="btn" style="font-size:11px;padding:2px 8px" onclick="removePrinttexTask('${t.id}', this)">Retirer</button></td></tr>`).join('');
+    el.innerHTML = `<div style="overflow-x:auto"><table class="m-list">
       <thead><tr><th>Produit</th><th>Couleur</th><th>Taille</th><th>Impression</th><th>Qté</th><th>Envoyé le</th><th></th></tr></thead>
       <tbody>${rows}</tbody></table></div>
       <div style="font-size:12px;color:var(--text-faint);margin-top:8px">${data.pending.length} tâche(s) non produite(s) — ${data.doneCount} terminée(s).</div>`;
@@ -1139,14 +1249,14 @@ async function preparePrinttexSend(mode) {
     return;
   }
   const rows = printtexSendItems.map(it => `<tr>
-    <td>${it.name}</td><td>${it.variant || '—'}</td><td>${it.size || '—'}</td>
-    <td>${it.typeImpression || '—'}</td><td><strong>${it.toPrint}</strong></td></tr>`).join('');
+    <td class="c-main prod-name">${it.name}</td><td class="c-meta">${it.variant || '—'}</td><td class="c-meta">${it.size || '—'}</td>
+    <td class="c-meta">${it.typeImpression || '—'}</td><td class="c-qty"><strong>${it.toPrint}</strong></td></tr>`).join('');
   const skippedLine = skipped.length
     ? `<div style="font-size:12px;color:var(--text-faint);margin-top:8px">${skipped.length} article(s) ignoré(s) — déjà en file chez Printtex.</div>` : '';
   panel.innerHTML = `
     <div style="font-weight:600;margin-bottom:2px">${mode === 'delta' ? 'Envoyer les nouveautés' : 'Envoyer toute la liste'} — ${printtexSendItems.length} article(s), ${totalQty} pièce(s)</div>
     ${note ? `<div style="font-size:12px;color:var(--text-faint);margin-bottom:8px">${note}</div>` : ''}
-    <div style="overflow-x:auto;max-height:260px;overflow-y:auto"><table>
+    <div style="overflow-x:auto;max-height:260px;overflow-y:auto"><table class="m-list">
       <thead><tr><th>Produit</th><th>Couleur</th><th>Taille</th><th>Impression</th><th>Qté</th></tr></thead>
       <tbody>${rows}</tbody></table></div>
     ${skippedLine}
